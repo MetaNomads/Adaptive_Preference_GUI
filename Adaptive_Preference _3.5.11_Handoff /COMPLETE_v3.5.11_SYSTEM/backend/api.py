@@ -1,4 +1,3 @@
-
 """
 Adaptive Preference Testing System - Backend API
 Version: 3.1 (Fixed & Enterprise-Ready)
@@ -25,7 +24,12 @@ import logging
 from functools import wraps
 import hashlib
 import base64
-from auth import require_auth, require_roles
+
+# Import auth functions - consolidated import
+try:
+    from backend.auth import require_auth, require_roles, jwt_issue_pair_token, jwt_decode_pair_token, jwt_encode
+except ImportError:
+    from auth import require_auth, require_roles, jwt_issue_pair_token, jwt_decode_pair_token, jwt_encode
 
 
 # ============================================================================
@@ -35,8 +39,11 @@ from auth import require_auth, require_roles
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": os.environ.get('ALLOWED_ORIGINS','http://localhost:3000').split(',')}})
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or (_ for _ in ()).throw(RuntimeError('DATABASE_URL is required'))
+# Database configuration - FIXED: Proper error handling
+database_url = os.environ.get('DATABASE_URL')
+if not database_url:
+    raise RuntimeError('DATABASE_URL environment variable is required')
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = (os.environ.get('FLASK_ENV') == 'development')  # Log SQL queries
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -199,8 +206,8 @@ class Experiment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Metadata
-    metadata = db.Column(JSONB, default={})
+    # Metadata - renamed to avoid SQLAlchemy reserved name conflict
+    experiment_metadata = db.Column('metadata', JSONB, default={})
     
     # Relationships
     user = db.relationship('User', back_populates='experiments')
@@ -251,7 +258,7 @@ class Stimulus(db.Model):
     width_px = db.Column(db.Integer)
     height_px = db.Column(db.Integer)
     checksum_sha256 = db.Column(db.String(64))
-    metadata = db.Column(JSONB, default={})
+    stimulus_metadata = db.Column('metadata', JSONB, default={})
     tags = db.Column(db.ARRAY(db.String))
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -441,26 +448,74 @@ def deserialize_numpy(data, shape, dtype=np.float64):
     return np.frombuffer(data, dtype=dtype).reshape(shape)
 
 
-# ============================================================================
-# AUTHENTICATION DECORATOR
-# ============================================================================
+def _is_attention_stimulus(stimulus):
+    """Check if stimulus is marked as attention check."""
+    try:
+        meta = getattr(stimulus, 'stimulus_metadata', {}) or {}
+        return bool(meta.get('attention_marker', False))
+    except Exception:
+        return False
 
-from backend.auth import require_auth, require_roles, jwt_issue_pair_token, jwt_decode_pair_token
+
+def _evaluate_session_quality(session, experiment):
+    """Evaluate session quality based on attention checks and trial count."""
+    try:
+        excl = (experiment.experiment_metadata or {}).get('exclusion', {})
+        attention_min_rate = float(excl.get('attention_min_rate', 0.75))
+        min_trials = int(excl.get('min_trials', experiment.min_trials or 0))
+        choices = Choice.query.filter_by(session_id=session.session_id).all() or []
+        att_total = 0
+        att_correct = 0
+        
+        for c in choices:
+            a = Stimulus.query.filter_by(stimulus_id=c.stimulus_a_id).first()
+            b = Stimulus.query.filter_by(stimulus_id=c.stimulus_b_id).first()
+            a_mark = _is_attention_stimulus(a)
+            b_mark = _is_attention_stimulus(b)
+            
+            if a_mark or b_mark:
+                att_total += 1
+                correct_id = a.stimulus_id if a_mark else b.stimulus_id
+                if str(c.chosen_stimulus_id) == str(correct_id):
+                    att_correct += 1
+        
+        att_rate = (att_correct/att_total) if att_total else 1.0
+        session.attention_check_passed = (att_rate >= attention_min_rate)
+        
+        reasons = []
+        if session.trials_completed < min_trials:
+            reasons.append(f'low_trials:{session.trials_completed}<{min_trials}')
+        if att_total and not session.attention_check_passed:
+            reasons.append(f'low_attention:{att_rate:.2f}<{attention_min_rate:.2f}')
+        
+        if reasons:
+            log_audit('session_exclusion', 'quality', 'Session flagged for exclusion',
+                      {'reasons': reasons, 'attention_rate': att_rate},
+                      session_id=session.session_id, experiment_id=session.experiment_id, 
+                      severity='warning')
+        
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"Quality evaluation error: {e}")
 
 
 # ============================================================================
 # API ENDPOINTS
+# ============================================================================
 
 @app.route('/api/auth/dev_issue_token', methods=['POST'])
 def dev_issue_token():
+    """Development endpoint for issuing tokens (disabled in production)."""
     if os.environ.get('AUTH_DEV_ISSUE_TOKENS') != '1':
-        return jsonify({'error':'disabled'}), 403
+        return jsonify({'error': 'disabled'}), 403
+    
     data = request.get_json() or {}
-    role = data.get('role','researcher')
-    sub = data.get('sub','dev-user')
-    from backend.auth import jwt_encode
+    role = data.get('role', 'researcher')
+    sub = data.get('sub', 'dev-user')
+    
     token = jwt_encode({'sub': sub, 'role': role}, exp_seconds=3600*8)
     return jsonify({'token': token, 'role': role})
+
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -671,6 +726,7 @@ def publish_experiment(experiment_id):
 
 
 @app.route('/api/sessions', methods=['POST'])
+@limiter.limit(SESSIONS_RATE)
 def create_session():
     """Create new subject session."""
     try:
@@ -742,27 +798,16 @@ def create_session():
         return jsonify({'error': str(e)}), 500
 
 
-@limiter.limit(NEXT_RATE)
 @app.route('/api/sessions/<session_token>/next', methods=['GET'])
+@limiter.limit(NEXT_RATE)
 def get_next_pair(session_token):
     """Get next stimulus pair for session using Bayesian algorithm."""
     try:
+        # Validate session first
         session = Session.query.filter_by(session_token=session_token).first()
         
         if not session:
-            
-        pres_order = 'AB'
-        if experiment.enable_counterbalancing and np.random.rand() > 0.5:
-            pair = [pair[1], pair[0]]
-            pres_order = 'BA'
-        pair_token = jwt_issue_pair_token({
-            'session_id': str(session.session_id),
-            'trial_number': session.current_trial + 1,
-            'stimulus_a_id': str(pair[0].stimulus_id),
-            'stimulus_b_id': str(pair[1].stimulus_id),
-            'presentation_order': pres_order
-        })
-        return jsonify({'error': 'Session not found', 'presentation_order': pres_order, 'pair_token': pair_token}), 404
+            return jsonify({'error': 'Session not found'}), 404
         
         if session.status == 'complete':
             return jsonify({'complete': True})
@@ -807,15 +852,28 @@ def get_next_pair(session_token):
         stimuli_list = sorted(stimuli, key=lambda s: s.display_order or 0)
         pair = [stimuli_list[i], stimuli_list[j]]
         
-        # Optionally counterbalance (randomize left/right)
+        # Determine presentation order
+        pres_order = 'AB'
         if experiment.enable_counterbalancing and np.random.rand() > 0.5:
             pair = [pair[1], pair[0]]
+            pres_order = 'BA'
+        
+        # Generate pair token for validation
+        pair_token = jwt_issue_pair_token({
+            'session_id': str(session.session_id),
+            'trial_number': session.current_trial + 1,
+            'stimulus_a_id': str(pair[0].stimulus_id),
+            'stimulus_b_id': str(pair[1].stimulus_id),
+            'presentation_order': pres_order
+        })
         
         return jsonify({
             'success': True,
             'trial_number': session.current_trial + 1,
             'stimulus_a': pair[0].to_dict(),
             'stimulus_b': pair[1].to_dict(),
+            'presentation_order': pres_order,
+            'pair_token': pair_token,
             'show_progress': experiment.show_progress,
             'progress_percentage': (session.trials_completed / session.trials_total * 100) if session.trials_total > 0 else 0
         })
@@ -825,135 +883,33 @@ def get_next_pair(session_token):
         return jsonify({'error': str(e)}), 500
 
 
-@limiter.limit(CHOICE_RATE)
 @app.route('/api/sessions/<session_token>/choice', methods=['POST'])
-
-def _is_attention_stimulus(stimulus):
-    try:
-        meta = getattr(stimulus, 'metadata', {}) or {}
-        return bool(meta.get('attention_marker', False))
-    except Exception:
-        return False
-
-def _evaluate_session_quality(session, experiment):
-    try:
-        excl = (experiment.metadata or {}).get('exclusion', {})
-        attention_min_rate = float(excl.get('attention_min_rate', 0.75))
-        min_trials = int(excl.get('min_trials', experiment.min_trials or 0))
-        choices = Choice.query.filter_by(session_id=session.session_id).all() or []
-        att_total = 0; att_correct = 0
-        for c in choices:
-            a = Stimulus.query.filter_by(stimulus_id=c.stimulus_a_id).first()
-            b = Stimulus.query.filter_by(stimulus_id=c.stimulus_b_id).first()
-            a_mark = _is_attention_stimulus(a); b_mark = _is_attention_stimulus(b)
-            if a_mark or b_mark:
-                att_total += 1
-                correct_id = a.stimulus_id if a_mark else b.stimulus_id
-                if str(c.chosen_stimulus_id) == str(correct_id):
-                    att_correct += 1
-        att_rate = (att_correct/att_total) if att_total else 1.0
-        session.attention_check_passed = (att_rate >= attention_min_rate)
-        reasons = []
-        if session.trials_completed < min_trials:
-            reasons.append(f'low_trials:{session.trials_completed}<{min_trials}')
-        if att_total and not session.attention_check_passed:
-            reasons.append(f'low_attention:{att_rate:.2f}<{attention_min_rate:.2f}')
-        if reasons:
-            log_audit('session_exclusion','quality','Session flagged for exclusion',
-                      {'reasons': reasons, 'attention_rate': att_rate},
-                      session_id=session.session_id, experiment_id=session.experiment_id, severity='warning')
-        db.session.commit()
-    except Exception as e:
-        logger.error(f"Quality evaluation error: {e}")
-
+@limiter.limit(CHOICE_RATE)
 def record_choice(session_token):
-
     """Record subject's choice and update Bayesian beliefs."""
     try:
         data = request.get_json()
         
+        # Validate session
         session = Session.query.filter_by(session_token=session_token).first()
         if not session:
             return jsonify({'error': 'Session not found'}), 404
         
-        # Validate choice
-        required = ['stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id', 'response_time_ms']
-        for field in required:
-            if field not in data:
-                return jsonify({'error': f'Missing field: {field}'}), 400
-        
-        # Get stimuli to find their indices
-        experiment = session.experiment
-        stimuli_list = sorted(experiment.stimuli, key=lambda s: s.display_order or 0)
-        
-        # Find indices
-        stimulus_a_idx = next((i for i, s in enumerate(stimuli_list) 
-                              if str(s.stimulus_id) == data['stimulus_a_id']), None)
-        stimulus_b_idx = next((i for i, s in enumerate(stimuli_list) 
-                              if str(s.stimulus_id) == data['stimulus_b_id']), None)
-        winner_idx = next((i for i, s in enumerate(stimuli_list) 
-                          if str(s.stimulus_id) == data['chosen_stimulus_id']), None)
-        
-        if stimulus_a_idx is None or stimulus_b_idx is None or winner_idx is None:
-            return jsonify({'error': 'Invalid stimulus IDs'}), 400
-        
-        # Load algorithm state
-        algo_state_record = AlgorithmState.query.filter_by(session_id=session.session_id).first()
-        
-        if not algo_state_record:
-            return jsonify({'error': 'Algorithm state not found'}), 500
-        
-        # Deserialize and update Bayesian state
-        from bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
-        
-        n_items = len(stimuli_list)
-        bayesian_state = BayesianPreferenceState(n_items)
-        bayesian_state.mu = deserialize_numpy(algo_state_record.mu, (n_items,))
-        bayesian_state.Sigma = deserialize_numpy(algo_state_record.sigma, (n_items, n_items))
-        bayesian_state.comparison_matrix = deserialize_numpy(algo_state_record.comparison_matrix, (n_items, n_items))
-        
-        # Update beliefs based on choice
-        selector = PureBayesianAdaptiveSelector(
-            epsilon=experiment.epsilon,
-            exploration_weight=experiment.exploration_weight
-        )
-        
-        bayesian_state = selector.update_beliefs(
-            bayesian_state, 
-            stimulus_a_idx, 
-            stimulus_b_idx, 
-            winner_idx
-        )
-        
-        # Serialize updated state
-        algo_state_record.mu = serialize_numpy(bayesian_state.mu)
-        algo_state_record.sigma = serialize_numpy(bayesian_state.Sigma)
-        algo_state_record.comparison_matrix = serialize_numpy(bayesian_state.comparison_matrix)
-        algo_state_record.trials_completed += 1
-        algo_state_record.updated_at = datetime.utcnow()
-        algo_state_record.state_checksum = hashlib.sha256(
-            bayesian_state.mu.tobytes() + bayesian_state.Sigma.tobytes()
-        ).hexdigest()
-        
-                pair_token = data.get('pair_token')
+        # Validate pair token
+        pair_token = data.get('pair_token')
         if not pair_token:
-            return jsonify({'error':'Missing pair_token'}), 400
+            return jsonify({'error': 'Missing pair_token'}), 400
+        
         try:
             pt = jwt_decode_pair_token(pair_token)
         except Exception as e:
             return jsonify({'error': f'Invalid pair_token: {e}'}), 400
+        
+        # Verify token matches session
         if str(session.session_id) != pt.get('session_id') or (session.current_trial + 1) != pt.get('trial_number'):
-            return jsonify({'error':'pair_token/session mismatch'}), 400
-
-    """Record subject's choice and update Bayesian beliefs."""
-    try:
-        data = request.get_json()
+            return jsonify({'error': 'pair_token/session mismatch'}), 400
         
-        session = Session.query.filter_by(session_token=session_token).first()
-        if not session:
-            return jsonify({'error': 'Session not found'}), 404
-        
-        # Validate choice
+        # Validate choice data
         required = ['stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id', 'response_time_ms']
         for field in required:
             if field not in data:
@@ -1020,7 +976,7 @@ def record_choice(session_token):
             stimulus_b_id=data['stimulus_b_id'],
             chosen_stimulus_id=data['chosen_stimulus_id'],
             response_time_ms=data['response_time_ms'],
-                presentation_order=pt.get('presentation_order'),
+            presentation_order=pt.get('presentation_order'),
             break_before=data.get('break_before', False)
         )
         
@@ -1040,6 +996,7 @@ def record_choice(session_token):
         elif session.trials_completed >= session.trials_total:
             session.status = 'complete'
             session.completed_at = datetime.utcnow()
+            _evaluate_session_quality(session, experiment)
         
         db.session.commit()
         
@@ -1100,6 +1057,177 @@ def get_results(experiment_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/experiments/all', methods=['GET'])
+@require_auth
+@require_roles(['admin', 'researcher'])
+def get_all_experiments():
+    """Get all experiments for the admin dashboard."""
+    try:
+        experiments = db.session.query(
+            Experiment,
+            db.func.count(Session.session_id).label('session_count')
+        ).outerjoin(Session, Experiment.experiment_id == Session.experiment_id)\
+         .group_by(Experiment.experiment_id).order_by(Experiment.created_at.desc()).all()
+
+        results = []
+        for exp, count in experiments:
+            exp_data = exp.to_dict()
+            exp_data['session_count'] = count
+            results.append(exp_data)
+
+        return jsonify({'success': True, 'experiments': results})
+    except Exception as e:
+        logger.error(f"Error getting all experiments: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/experiments/<experiment_id>/export_choices_csv', methods=['GET'])
+@require_auth
+@require_roles(['admin', 'researcher'])
+def export_choices_csv(experiment_id):
+    """Export all choices for an experiment as a CSV file."""
+    try:
+        experiment = Experiment.query.filter_by(experiment_id=experiment_id).first()
+        if not experiment:
+            return jsonify({'error': 'Experiment not found'}), 404
+
+        # Find all session IDs for this experiment
+        session_ids = [s.session_id for s in experiment.sessions]
+        if not session_ids:
+            return jsonify({'error': 'No sessions found for this experiment'}), 404
+
+        # Get all choices
+        choices = Choice.query.filter(
+            Choice.session_id.in_(session_ids)
+        ).order_by(Choice.session_id, Choice.trial_number).all()
+
+        if not choices:
+            return jsonify({'error': 'No choices found for this experiment'}), 404
+
+        # Create CSV in-memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Header
+        writer.writerow([
+            'session_id', 'subject_id', 'trial_number',
+            'stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id',
+            'response_time_ms', 'timestamp', 'presentation_order'
+        ])
+        
+        # Rows
+        for choice in choices:
+            writer.writerow([
+                choice.session_id,
+                getattr(choice.session, 'subject_id', None),
+                choice.trial_number,
+                choice.stimulus_a_id,
+                choice.stimulus_b_id,
+                choice.chosen_stimulus_id,
+                choice.response_time_ms,
+                choice.timestamp.isoformat() if getattr(choice, 'timestamp', None) else '',
+                choice.presentation_order
+            ])
+
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                "Content-Disposition": f"attachment;filename=experiment_{experiment_id}_choices.csv"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error exporting CSV: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Consent and debrief document endpoints
+CONSENT_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'docs', 'consent_default.html')
+DEBRIEF_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'docs', 'debrief_default.html')
+
+
+def _current_consent_path():
+    """Get path to current consent document."""
+    for name in ('consent.html', 'consent.pdf'):
+        p = os.path.join(app.config.get('UPLOAD_FOLDER', '/tmp'), name)
+        if os.path.exists(p):
+            return p
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'consent_default.html'))
+
+
+def _current_debrief_path():
+    """Get path to current debrief document."""
+    for name in ('debrief.html', 'debrief.pdf'):
+        p = os.path.join(app.config.get('UPLOAD_FOLDER', '/tmp'), name)
+        if os.path.exists(p):
+            return p
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'debrief_default.html'))
+
+
+@app.route('/api/consent', methods=['GET'])
+def get_consent():
+    """Serve consent document."""
+    try:
+        return send_file(_current_consent_path())
+    except Exception as e:
+        logger.error(f"Consent serve error: {e}")
+        return jsonify({'error': 'Consent not available'}), 404
+
+
+@app.route('/api/debrief', methods=['GET'])
+def get_debrief():
+    """Serve debrief document."""
+    try:
+        return send_file(_current_debrief_path())
+    except Exception as e:
+        logger.error(f"Debrief serve error: {e}")
+        return jsonify({'error': 'Debrief not available'}), 404
+
+
+@app.route('/api/admin/upload_consent', methods=['POST'])
+@require_auth
+@require_roles(['admin', 'researcher'])
+def upload_consent():
+    """Upload custom consent document."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file field'}), 400
+    
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+    
+    filename = secure_filename(f.filename.lower())
+    filename = 'consent.pdf' if filename.endswith('.pdf') else 'consent.html'
+    dest = os.path.join(app.config.get('UPLOAD_FOLDER', '/tmp'), filename)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    f.save(dest)
+    
+    log_audit('consent_uploaded', 'admin', 'Uploaded consent file', {'filename': filename})
+    return jsonify({'success': True, 'filename': filename})
+
+
+@app.route('/api/admin/upload_debrief', methods=['POST'])
+@require_auth
+@require_roles(['admin', 'researcher'])
+def upload_debrief():
+    """Upload custom debrief document."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file field'}), 400
+    
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+    
+    filename = secure_filename(f.filename.lower())
+    filename = 'debrief.pdf' if filename.endswith('.pdf') else 'debrief.html'
+    dest = os.path.join(app.config.get('UPLOAD_FOLDER', '/tmp'), filename)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    f.save(dest)
+    
+    log_audit('debrief_uploaded', 'admin', 'Uploaded debrief file', {'filename': filename})
+    return jsonify({'success': True, 'filename': filename})
+
+
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
@@ -1132,156 +1260,3 @@ if __name__ == '__main__':
         port=5000,
         debug=os.environ.get('FLASK_ENV') == 'development'
     )
-
-
-
-
-@app.route('/api/experiments/all', methods=['GET'])
-@require_auth
-@require_roles(['admin','researcher'])
-def get_all_experiments():
-    """Get all experiments for the admin dashboard."""
-    try:
-        experiments = db.session.query(
-            Experiment,
-            db.func.count(Session.session_id).label('session_count')
-        ).outerjoin(Session, Experiment.experiment_id == Session.experiment_id)\
-         .group_by(Experiment.experiment_id).order_by(Experiment.created_at.desc()).all()
-
-        results = []
-        for exp, count in experiments:
-            exp_data = exp.to_dict()
-            exp_data['session_count'] = count
-            results.append(exp_data)
-
-        return jsonify({'success': True, 'experiments': results})
-    except Exception as e:
-        logger.error(f"Error getting all experiments: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-
-@app.route('/api/experiments/<experiment_id>/export_choices_csv', methods=['GET'])
-@require_auth
-@require_roles(['admin','researcher'])
-def export_choices_csv(experiment_id):
-    """Export all choices for an experiment as a CSV file."""
-    try:
-        experiment = Experiment.query.filter_by(experiment_id=experiment_id).first()
-        if not experiment:
-            return jsonify({'error': 'Experiment not found'}), 404
-
-        # Find all session IDs for this experiment
-        session_ids = [s.session_id for s in experiment.sessions]
-        if not session_ids:
-            return jsonify({'error': 'No sessions found for this experiment'}), 404
-
-        # Get all choices
-        choices = Choice.query.filter(
-            Choice.session_id.in_(session_ids)
-        ).order_by(Choice.session_id, Choice.trial_number).all()
-
-        if not choices:
-            return jsonify({'error': 'No choices found for this experiment'}), 404
-
-        # Create CSV in-memory
-        output = io.StringIO()
-        writer = csv.writer(output)
-        # Header
-        writer.writerow([
-            'session_id', 'subject_id', 'trial_number',
-            'stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id',
-            'response_time_ms', 'timestamp', 'presentation_order'
-        ])
-        # Rows
-        for choice in choices:
-            writer.writerow([
-                choice.session_id,
-                getattr(choice.session, 'subject_id', None),
-                choice.trial_number,
-                choice.stimulus_a_id,
-                choice.stimulus_b_id,
-                choice.chosen_stimulus_id,
-                choice.response_time_ms,
-                choice.timestamp.isoformat() if getattr(choice, 'timestamp', None) else '',
-                choice.presentation_order
-            ])
-
-        return Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={
-                "Content-Disposition": f"attachment;filename=experiment_{experiment_id}_choices.csv"
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error exporting CSV: {e}")
-        return jsonify({'error': str(e)}), 500
-
-from werkzeug.utils import secure_filename
-
-CONSENT_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'docs', 'consent_default.html')
-DEBRIEF_DEFAULT_PATH = os.path.join(os.path.dirname(__file__), '..', 'docs', 'debrief_default.html')
-
-def _current_consent_path():
-    for name in ('consent.html','consent.pdf'):
-        p = os.path.join(app.config.get('UPLOAD_FOLDER','/tmp'), name)
-        if os.path.exists(p): return p
-    return os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'consent_default.html'))
-
-def _current_debrief_path():
-    for name in ('debrief.html','debrief.pdf'):
-        p = os.path.join(app.config.get('UPLOAD_FOLDER','/tmp'), name)
-        if os.path.exists(p): return p
-    return os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'debrief_default.html'))
-
-@app.route('/api/consent', methods=['GET'])
-def get_consent():
-    try:
-        return send_file(_current_consent_path())
-    except Exception as e:
-        logger.error(f"Consent serve error: {e}")
-        return jsonify({'error':'Consent not available'}), 404
-
-@app.route('/api/debrief', methods=['GET'])
-def get_debrief():
-    try:
-        return send_file(_current_debrief_path())
-    except Exception as e:
-        logger.error(f"Debrief serve error: {e}")
-        return jsonify({'error':'Debrief not available'}), 404
-
-@app.route('/api/admin/upload_consent', methods=['POST'])
-@require_auth
-@require_roles(['admin','researcher'])
-def upload_consent():
-    if 'file' not in request.files:
-        return jsonify({'error':'No file field'}), 400
-    f = request.files['file']
-    if not f or not f.filename:
-        return jsonify({'error':'Empty filename'}), 400
-    filename = secure_filename(f.filename.lower())
-    filename = 'consent.pdf' if filename.endswith('.pdf') else 'consent.html'
-    dest = os.path.join(app.config.get('UPLOAD_FOLDER','/tmp'), filename)
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    f.save(dest)
-    log_audit('consent_uploaded','admin','Uploaded consent file',{'filename':filename})
-    return jsonify({'success': True, 'filename': filename})
-
-@app.route('/api/admin/upload_debrief', methods=['POST'])
-@require_auth
-@require_roles(['admin','researcher'])
-def upload_debrief():
-    if 'file' not in request.files:
-        return jsonify({'error':'No file field'}), 400
-    f = request.files['file']
-    if not f or not f.filename:
-        return jsonify({'error':'Empty filename'}), 400
-    filename = secure_filename(f.filename.lower())
-    filename = 'debrief.pdf' if filename.endswith('.pdf') else 'debrief.html'
-    dest = os.path.join(app.config.get('UPLOAD_FOLDER','/tmp'), filename)
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    f.save(dest)
-    log_audit('debrief_uploaded','admin','Uploaded debrief file',{'filename':filename})
-    return jsonify({'success': True, 'filename': filename})
-
