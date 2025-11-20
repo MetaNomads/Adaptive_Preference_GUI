@@ -369,7 +369,7 @@ curl -X POST http://localhost:5000/api/auth/login \
 
 #### Step 2.2.1: Open Experimenter Dashboard
 
-URL: `http://localhost:8000/experimenter_dashboard_improved_PATCHED.html`
+URL: `http://localhost:8000/experimenter_dashboard_improved.html`
 
 **Verify**:
 - [ ] Beautiful purple-blue gradient background (NOT flat gray!)
