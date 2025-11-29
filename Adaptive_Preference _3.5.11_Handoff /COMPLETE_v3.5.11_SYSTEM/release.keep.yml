@@ -1,0 +1,19 @@
+keep:
+  # Governance / installer
+  - "v3_governance.yml"
+  - "governance.lock"
+  - "release.keep.yml"
+  - "install.sh"
+  - "scripts"
+  - "docs"
+
+  # Core app structure
+  - "backend"
+  - "frontend"
+  - "database"
+  - "tests"
+
+  # Root docs & config
+  - "VERSION.txt"
+  - "README.md"
+  - "requirements.txt"

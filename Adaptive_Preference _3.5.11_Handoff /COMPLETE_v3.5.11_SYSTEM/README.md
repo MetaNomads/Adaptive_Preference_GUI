@@ -186,6 +186,21 @@ open frontend/subject_interface_complete_PATCHED.html?demo=true
 # Should load without errors
 ```
 
+## Governance & Installer
+
+This system includes a Governance + Autoinstaller kit in this folder:
+
+- `install.sh` – sets up a `.venv`, installs dependencies, and runs governance checks.
+- `v3_governance.yml` – describes critical files and imports that must remain valid.
+- `scripts/` – guard scripts that validate repository health (syntax, imports, hollow dirs, etc).
+
+To set up on a new machine:
+
+```bash
+cd Adaptive_Preference_GUI/Adaptive_Preference\ _3.5.11_Handoff\ /COMPLETE_v3.5.11_SYSTEM
+./install.sh
+
+
 ---
 
 **This is the COMPLETE system - ready to deploy!**

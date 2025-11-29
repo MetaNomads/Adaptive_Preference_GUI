@@ -1,0 +1,6 @@
+governance_version: 3
+locked_at: "2025-11-29"
+notes: >
+  Governance adapted for AdaptivePreferenceGUI v3.5.11.
+  Critical roots: backend, scripts. Canonical files include backend/api.py,
+  primary HTML frontends, database/schema.sql, and README.md.

@@ -1,0 +1,51 @@
+# Governance spec for Adaptive Preference GUI v3.5.11
+version: 3
+project_name: "AdaptivePreferenceGUI_v3.5.11"
+root_package: "backend"
+
+critical_code_roots:
+  - "backend"
+  - "scripts"
+
+canonical_files:
+  # Governance / installer
+  - "v3_governance.yml"
+  - "governance.lock"
+  - "release.keep.yml"
+  - "install.sh"
+  - "requirements.txt"
+  - "README.md"
+  - "VERSION.txt"
+
+  # Core app code & schema
+  - "backend/api.py"
+  - "backend/auth.py"
+  - "backend/bayesian_adaptive.py"
+  - "database/schema.sql"
+
+  # Critical frontends
+  - "frontend/experimenter_dashboard_improved.html"
+  - "frontend/subject_interface_complete.html"
+  - "frontend/stimulus_library.html"
+  - "frontend/results_dashboard.html"
+  - "frontend/admin_PATCHED.html"
+
+stub_allowlist:
+  # Paths where it's okay to have stubs/placeholders
+  - "experiments/**"
+  - "notebooks/**"
+
+hollow_paths_allowlist:
+  # Paths that are allowed to be mostly docs or placeholders
+  - "docs/**"
+  - "experiments/**"
+  - "tests/**"
+
+critical_imports:
+  # This must succeed: app = Flask(__name__) in backend/api.py
+  - "backend.api:app"
+
+entrypoints:
+  api:
+    module: "backend.api"
+    object: "app"
