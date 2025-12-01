@@ -909,7 +909,7 @@ def create_experiment():
         role = payload.get("role", "researcher")
 
         # use sub as an email-ish identifier for dev
-        dev_email = f"{sub}@local" if "@" not in sub else sub
+        dev_email = f"{sub}@example.com" if "@" not in sub else sub
         username = dev_email.split("@")[0]
 
         user = User.query.filter_by(email=dev_email).first()
