@@ -57,7 +57,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 }
 
 # File upload configuration
-app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'backend', 'uploads')
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max file size
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -541,6 +541,18 @@ def delete_experiment(experiment_id):
             # 4) Sessions themselves
             db.session.execute(
                 sa_delete(Session).where(Session.session_id.in_(session_ids))
+            )
+
+            # 4b) Choices linked directly to stimuli of this experiment (not tied to a session)
+            db.session.execute(
+                sa_delete(Choice).where(Choice.stimulus_a_id.in_(
+                    db.session.query(Stimulus.stimulus_id).filter(Stimulus.experiment_id == experiment_id)
+                ))
+            )
+            db.session.execute(
+                sa_delete(Choice).where(Choice.stimulus_b_id.in_(
+                    db.session.query(Stimulus.stimulus_id).filter(Stimulus.experiment_id == experiment_id)
+                ))
             )
 
         # 5) Stimuli belonging to this experiment
