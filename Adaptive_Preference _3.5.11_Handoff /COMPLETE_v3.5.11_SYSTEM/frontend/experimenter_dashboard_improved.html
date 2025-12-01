@@ -1713,7 +1713,7 @@
 
                 const breakInput = document.getElementById('breakInterval');
                 if (breakInput) {
-                    breakInput.value = rec.breakEvery;
+                    breakInput.value = rec.breakEvery > 0 ? rec.breakEvery : 20;
                 }
 
                 document.getElementById('showProgress').checked = true;
