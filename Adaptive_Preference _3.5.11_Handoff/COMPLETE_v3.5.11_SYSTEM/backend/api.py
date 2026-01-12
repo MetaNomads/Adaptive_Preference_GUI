@@ -591,25 +591,36 @@ def delete_experiment(experiment_id):
         app.logger.exception('Failed to delete experiment')
         return jsonify({'error': f'Failed to delete experiment: {str(e)}'}), 500
 
+
 class Stimulus(db.Model):
     __tablename__ = 'stimuli'
     
-    # ... other columns ...
+    # REQUIRED: This must be set as primary_key=True
+    stimulus_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    experiment_id = db.Column(db.String(36), db.ForeignKey('experiments.experiment_id', ondelete='CASCADE'), nullable=False)
     
-    # CHANGE THIS LINE:
-    # tags = db.Column(db.ARRAY(db.String)) 
-    # TO THIS (Compatible with both SQLite and Postgres):
+    stimulus_name = db.Column(db.String(200), nullable=False)
+    display_order = db.Column(db.Integer)
+    file_path = db.Column(db.String(500), nullable=False)
+    url = db.Column(db.Text)
+    file_size_bytes = db.Column(db.Integer)
+    mime_type = db.Column(db.String(100))
+    width_px = db.Column(db.Integer)
+    height_px = db.Column(db.Integer)
+    checksum_sha256 = db.Column(db.String(64))
+    stimulus_metadata = db.Column('metadata', db.JSON, default={})
+    
+    # Modernized for SQLite compatibility
     tags = db.Column(db.JSON, default=[]) 
-    
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # ... relationships ...
-
+    # Relationships
+    experiment = db.relationship('Experiment', back_populates='stimuli')
+    
     def to_dict(self):
         meta = self.stimulus_metadata or {}
         # Ensure tags is always a list for the frontend
         current_tags = self.tags if isinstance(self.tags, list) else []
-        
         return {
             'stimulus_id': str(self.stimulus_id),
             'stimulus_name': self.stimulus_name,
@@ -623,10 +634,9 @@ class Stimulus(db.Model):
             'curvature_level': meta.get('curvature_level'),
             'brightness': meta.get('brightness'),
             'hue': meta.get('hue'),
-            'tags': current_tags, # Use the cleaned list
+            'tags': current_tags,
             'experiment_id': str(self.experiment_id) if self.experiment_id else None,
         }
-
 class Session(db.Model):
     __tablename__ = 'sessions'
     
