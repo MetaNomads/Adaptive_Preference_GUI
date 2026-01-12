@@ -43,16 +43,20 @@ CORS(app, resources={
         "origins": os.environ.get('ALLOWED_ORIGINS','http://localhost:3000').split(','),
         "expose_headers": ["Content-Disposition"]}})
 
-# Database configuration - FIXED: Proper error handling
-database_url = os.environ.get('DATABASE_URL')
-if not database_url:
-    raise RuntimeError('DATABASE_URL environment variable is required')
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+# --- REPLACING POSTGRES CONFIG WITH AUTO-SQLITE ---
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# Creates the database file in the root directory for easy access
+default_db_path = os.path.join(BASE_DIR, '..', 'adaptive_preference_offline.db')
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL', 
+    f'sqlite:///{default_db_path}'
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ECHO'] = (os.environ.get('FLASK_ENV') == 'development')  # Log SQL queries
+app.config['SQLALCHEMY_ECHO'] = (os.environ.get('FLASK_ENV') == 'development')
+
+# SQLite does not support these Postgres-specific options
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,
-    'pool_recycle': 3600,
     'pool_pre_ping': True
 }
 
@@ -133,7 +137,7 @@ CHOICE_RATE = os.environ.get('CHOICE_RATE','240 per minute')
 class User(db.Model):
     __tablename__ = 'users'
     
-    user_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     username = db.Column(db.String(100), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -144,7 +148,7 @@ class User(db.Model):
     last_login = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True)
     email_verified = db.Column(db.Boolean, default=False)
-    preferences = db.Column(JSONB, default={})
+    preferences = db.Column(db.JSON, default={})
     
     # Relationships
     experiments = db.relationship('Experiment', back_populates='user', cascade='all, delete-orphan')
@@ -170,8 +174,8 @@ class User(db.Model):
 class Experiment(db.Model):
     __tablename__ = 'experiments'
     
-    experiment_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
+    experiment_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
     
     # Basic Info
     name = db.Column(db.String(200), nullable=False)
@@ -212,7 +216,7 @@ class Experiment(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Metadata - renamed to avoid SQLAlchemy reserved name conflict
-    experiment_metadata = db.Column('metadata', JSONB, default={})
+    experiment_metadata = db.Column('metadata', db.JSON, default={})
     
     # Relationships
     user = db.relationship('User', back_populates='experiments')
@@ -590,8 +594,8 @@ def delete_experiment(experiment_id):
 class Stimulus(db.Model):
     __tablename__ = 'stimuli'
     
-    stimulus_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    experiment_id = db.Column(UUID(as_uuid=True), db.ForeignKey('experiments.experiment_id', ondelete='CASCADE'), nullable=False)
+    stimulus_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    experiment_id = db.Column(db.String(36), db.ForeignKey('experiments.experiment_id', ondelete='CASCADE'), nullable=False)
     
     stimulus_name = db.Column(db.String(200), nullable=False)
     display_order = db.Column(db.Integer)
@@ -602,7 +606,7 @@ class Stimulus(db.Model):
     width_px = db.Column(db.Integer)
     height_px = db.Column(db.Integer)
     checksum_sha256 = db.Column(db.String(64))
-    stimulus_metadata = db.Column('metadata', JSONB, default={})
+    stimulus_metadata = db.Column('metadata', db.JSON, default={})
     tags = db.Column(db.ARRAY(db.String))
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -636,8 +640,8 @@ class Stimulus(db.Model):
 class Session(db.Model):
     __tablename__ = 'sessions'
     
-    session_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    experiment_id = db.Column(UUID(as_uuid=True), db.ForeignKey('experiments.experiment_id', ondelete='RESTRICT'), nullable=False)
+    session_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    experiment_id = db.Column(db.String(36), db.ForeignKey('experiments.experiment_id', ondelete='RESTRICT'), nullable=False)
     
     session_token = db.Column(db.String(128), unique=True, nullable=False)
     subject_id = db.Column(db.String(100))
@@ -654,8 +658,8 @@ class Session(db.Model):
     
     total_time_seconds = db.Column(db.Integer, default=0)
     
-    subject_metadata = db.Column(JSONB, default={})
-    browser_info = db.Column(JSONB, default={})
+    subject_metadata = db.Column(db.JSON, default={})
+    browser_info = db.Column(db.JSON, default={})
     ip_address = db.Column(INET)
     
     consistency_score = db.Column(db.Float)
@@ -689,8 +693,8 @@ class Session(db.Model):
 class AlgorithmState(db.Model):
     __tablename__ = 'algorithm_state'
     
-    state_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = db.Column(UUID(as_uuid=True), db.ForeignKey('sessions.session_id', ondelete='CASCADE'), nullable=False, unique=True)
+    state_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    session_id = db.Column(db.String(36), db.ForeignKey('sessions.session_id', ondelete='CASCADE'), nullable=False, unique=True)
     
     mu = db.Column(BYTEA, nullable=False)  # Preference means
     sigma = db.Column(BYTEA, nullable=False)  # Covariance matrix
@@ -714,14 +718,14 @@ class AlgorithmState(db.Model):
 class Choice(db.Model):
     __tablename__ = 'choices'
     
-    choice_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = db.Column(UUID(as_uuid=True), db.ForeignKey('sessions.session_id', ondelete='CASCADE'), nullable=False)
+    choice_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    session_id = db.Column(db.String(36), db.ForeignKey('sessions.session_id', ondelete='CASCADE'), nullable=False)
     
     trial_number = db.Column(db.Integer, nullable=False)
     
-    stimulus_a_id = db.Column(UUID(as_uuid=True), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
-    stimulus_b_id = db.Column(UUID(as_uuid=True), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
-    chosen_stimulus_id = db.Column(UUID(as_uuid=True), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
+    stimulus_a_id = db.Column(db.String(36), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
+    stimulus_b_id = db.Column(db.String(36), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
+    chosen_stimulus_id = db.Column(db.String(36), db.ForeignKey('stimuli.stimulus_id'), nullable=False)
     
     response_time_ms = db.Column(db.Integer, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -736,16 +740,16 @@ class Choice(db.Model):
 class AuditLog(db.Model):
     __tablename__ = 'audit_log'
     
-    log_id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    log_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
     
-    user_id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.user_id'))
-    experiment_id = db.Column(UUID(as_uuid=True), db.ForeignKey('experiments.experiment_id'))
-    session_id = db.Column(UUID(as_uuid=True), db.ForeignKey('sessions.session_id'))
+    user_id = db.Column(db.String(36), db.ForeignKey('users.user_id'))
+    experiment_id = db.Column(db.String(36), db.ForeignKey('experiments.experiment_id'))
+    session_id = db.Column(db.String(36), db.ForeignKey('sessions.session_id'))
     
     event_type = db.Column(db.String(100), nullable=False)
     event_category = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text)
-    details = db.Column(JSONB, default={})
+    details = db.Column(db.JSON, default={})
     
     ip_address = db.Column(INET)
     user_agent = db.Column(db.Text)
@@ -1777,13 +1781,13 @@ def internal_error(e):
 # ============================================================================
 
 if __name__ == '__main__':
-    # Create tables
+    # Automatically create the offline database file and tables on click
     with app.app_context():
         db.create_all()
+        print(f"✓ Offline Database Initialized at: {app.config['SQLALCHEMY_DATABASE_URI']}")
     
-    # Run app
     app.run(
-        host='0.0.0.0',
+        host='127.0.0.1', # Use local loopback for offline security
         port=5000,
         debug=os.environ.get('FLASK_ENV') == 'development'
     )
