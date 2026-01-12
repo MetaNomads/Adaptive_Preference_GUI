@@ -1776,7 +1776,18 @@ def internal_error(e):
 # ============================================================================
 # MAIN
 # ============================================================================
+# --- ADD THIS TO SERVE FRONTEND FILES ---
+@app.route('/frontend/<path:filename>')
+def serve_frontend(filename):
+    """Serves files from the frontend directory so the app works offline."""
+    frontend_dir = os.path.join(os.path.dirname(app.root_path), 'frontend')
+    return send_from_directory(frontend_dir, filename)
 
+@app.route('/')
+def index():
+    """Redirects the base URL to the experimenter dashboard."""
+    return serve_frontend('experimenter_dashboard_improved.html')
+# ----------------------------------------
 if __name__ == '__main__':
     # Automatically create the offline database file and tables on click
     with app.app_context():
