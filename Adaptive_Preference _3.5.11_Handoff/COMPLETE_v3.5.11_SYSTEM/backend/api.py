@@ -38,10 +38,16 @@ except ImportError:
 # ============================================================================
 
 app = Flask(__name__)
+# Allow both localhost and the 127.0.0.1 IP on port 5000
 CORS(app, resources={
     r"/api/*": {
-        "origins": os.environ.get('ALLOWED_ORIGINS','http://localhost:3000').split(','),
-        "expose_headers": ["Content-Disposition"]}})
+        "origins": [
+            "http://localhost:5000",
+            "http://127.0.0.1:5000"
+        ],
+        "expose_headers": ["Content-Disposition"]
+    }
+})
 
 # --- REPLACING POSTGRES CONFIG WITH AUTO-SQLITE ---
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -872,28 +878,25 @@ def _evaluate_session_quality(session, experiment):
 
 @app.route('/api/auth/dev_issue_token', methods=['POST'])
 def dev_issue_token():
-    """Development endpoint for issuing tokens, now forced active for offline use."""
-    # Remove the environment variable check for local robustness
-    # if os.environ.get('AUTH_DEV_ISSUE_TOKENS') != '1':
-    #     return jsonify({'error': 'disabled'}), 403
-    
+    """Forced active for offline use to allow easy admin access."""
     data = request.get_json() or {}
     role = data.get('role', 'researcher')
     sub = data.get('sub', 'dev-user')
     
-    # Ensure the user exists in your new SQLite database so the token is valid
+    # Check if the user exists in our local SQLite DB; if not, create them
     user = User.query.filter_by(username=sub).first()
     if not user:
         user = User(
             email=f"{sub}@example.com",
             username=sub,
             role=role,
-            full_name="Local Developer"
+            full_name="Local Admin"
         )
-        user.set_password("dev-password") # Default password
+        user.set_password("dev-password")
         db.session.add(user)
         db.session.commit()
     
+    # Issue the token
     token = jwt_encode({'sub': sub, 'role': role}, exp_seconds=3600*8)
     return jsonify({'token': token, 'role': role, 'user_id': user.user_id})
 
