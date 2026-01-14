@@ -876,30 +876,31 @@ def _evaluate_session_quality(session, experiment):
 # API ENDPOINTS
 # ============================================================================
 
+# --- AFTER (Exact lines to paste) ---
 @app.route('/api/auth/dev_issue_token', methods=['POST'])
 def dev_issue_token():
     """Forced active for offline use to allow easy admin access."""
-    data = request.get_json() or {}
-    role = data.get('role', 'researcher')
-    sub = data.get('sub', 'dev-user')
+    try:
+        data = request.get_json() or {}
+        role = data.get('role', 'researcher')
+        sub = data.get('sub', 'dev-user')
+        
+        email = f"{sub}@example.com"
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            user = User(email=email, username=sub, role=role, full_name="Local Admin", is_active=True)
+            user.set_password("dev-password")
+            db.session.add(user)
+            db.session.commit()
+        
+        token = jwt_encode({'sub': sub, 'role': role}, exp_seconds=3600*8)
+        # Ensure user_id is sent as a string for JSON compatibility
+        return jsonify({'token': token, 'role': role, 'user_id': str(user.user_id)})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500    
     
-    # Check if the user exists in our local SQLite DB; if not, create them
-    user = User.query.filter_by(username=sub).first()
-    if not user:
-        user = User(
-            email=f"{sub}@example.com",
-            username=sub,
-            role=role,
-            full_name="Local Admin"
-        )
-        user.set_password("dev-password")
-        db.session.add(user)
-        db.session.commit()
-    
-    # Issue the token
-    token = jwt_encode({'sub': sub, 'role': role}, exp_seconds=3600*8)
-    return jsonify({'token': token, 'role': role, 'user_id': user.user_id})
-
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
