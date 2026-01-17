@@ -297,10 +297,10 @@
   </div>
 
   <script>
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = 'http://127.0.0.1:5000/api';
 
     function authHeader() {
-      const t = localStorage.getItem('jwt');
+      const t = localStorage.getItem('jwt') || localStorage.getItem('token');
       return t ? { 'Authorization': 'Bearer ' + t } : {};
     }
 

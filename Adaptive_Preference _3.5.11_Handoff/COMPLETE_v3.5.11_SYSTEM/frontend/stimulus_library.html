@@ -352,12 +352,12 @@
     var experiments = [];
 
     (function() {
-      var API_BASE = 'http://localhost:5000/api';
+      var API_BASE = 'http://127.0.0.1:5000/api';
       var allStimuli = [];
       var filteredStimuli = [];
 
       function authHeader() {
-        var token = localStorage.getItem('jwt');
+        var token = localStorage.getItem('jwt') || localStorage.getItem('token');
         var headers = {};
         if (token) {
           headers['Authorization'] = 'Bearer ' + token;

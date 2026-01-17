@@ -714,7 +714,7 @@
 
 
         // ===== API CONFIGURATION =====
-        const API_BASE = 'http://localhost:5000/api';
+        const API_BASE = 'http://127.0.0.1:5000/api';
 
         // ===== DEMO MODE =====
         function runDemoMode(params) {
@@ -1162,7 +1162,7 @@
             contentEl.innerHTML = 'Loading…';
 
             try {
-                const resp = await fetch('http://localhost:5000/api/consent', {
+                const resp = await fetch('http://127.0.0.1:5000/api/consent', {
                 headers: { 'Accept': '*/*' }
                 });
 
