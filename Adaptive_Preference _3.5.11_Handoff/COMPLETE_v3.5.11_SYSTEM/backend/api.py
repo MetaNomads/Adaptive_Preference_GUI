@@ -11,7 +11,6 @@ import csv
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import UUID, INET, JSONB, BYTEA
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -144,7 +143,7 @@ CHOICE_RATE = os.environ.get('CHOICE_RATE','240 per minute')
 class User(db.Model):
     __tablename__ = 'users'
     
-    user_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    user_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     username = db.Column(db.String(100), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
@@ -181,7 +180,7 @@ class User(db.Model):
 class Experiment(db.Model):
     __tablename__ = 'experiments'
     
-    experiment_id = db.Column(db.String(36), primary_key=True, default=uuid.uuid4)
+    experiment_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = db.Column(db.String(36), db.ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
     
     # Basic Info
