@@ -15,6 +15,7 @@ venv/
 # Runtime data
 backend/uploads/
 *.db
+experiments_data/
 
 # Editor/IDE
 .vscode/
