@@ -421,6 +421,48 @@ class Experiment(db.Model):
 # ============================
 # Stimulus Library API
 # ============================
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/stimuli', methods=['GET'])
 @require_auth
@@ -448,6 +490,48 @@ def list_stimuli():
         logger.error(f"Error listing stimuli: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/stimuli/upload', methods=['POST'])
 @require_auth
@@ -537,6 +621,48 @@ def upload_stimulus_library():
         logger.error(f"Error uploading stimulus: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/stimuli/<stimulus_id>', methods=['PUT'])
 @require_auth
@@ -576,6 +702,48 @@ def update_stimulus_metadata(stimulus_id):
         logger.error(f"Error updating stimulus metadata: {e}")
         return jsonify({'error': 'Failed to update stimulus'}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/stimuli/<stimulus_id>/auto_tag', methods=['POST'])
 @require_auth
@@ -617,7 +785,50 @@ def auto_tag_stimulus(stimulus_id):
         db.session.rollback()
         logger.error(f"Error auto-tagging stimulus: {e}")
         return jsonify({'error': 'Failed to auto-tag stimulus'}), 500
-    
+
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
+
 @app.route('/api/stimuli/<stimulus_id>/assign_experiment', methods=['PATCH'])
 @require_auth
 @require_roles(['admin', 'researcher'])
@@ -644,6 +855,48 @@ def assign_stimulus_experiment(stimulus_id):
     db.session.commit()
     return jsonify({'success': True, 'stimulus': stim.to_dict()})
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/archive', methods=['POST'])
 @require_auth
@@ -675,6 +928,48 @@ def archive_experiment(experiment_id):
         return jsonify({'error': 'Failed to archive experiment'}), 500
     
 from sqlalchemy import delete as sa_delete
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>', methods=['DELETE'])
 @require_auth
@@ -994,6 +1289,48 @@ def _evaluate_session_quality(session, experiment):
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/auth/dev_issue_token', methods=['POST'])
 def dev_issue_token():
@@ -1031,7 +1368,49 @@ def dev_issue_token():
         db.session.rollback()
         print(f"DEV LOGIN ERROR: {e}") # This prints to your terminal
         return jsonify({'error': str(e)}), 500
-    
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
@@ -1048,6 +1427,48 @@ def health_check():
         'version': '3.1'
     })
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments', methods=['POST'])
 @require_auth
@@ -1104,6 +1525,49 @@ def create_experiment():
         logger.error(f"Error creating experiment: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
+
 @app.route('/api/experiments/<experiment_id>', methods=['GET'])
 def get_experiment(experiment_id):
     """Get experiment by ID."""
@@ -1121,6 +1585,48 @@ def get_experiment(experiment_id):
     except Exception as e:
         logger.error(f"Error getting experiment: {e}")
         return jsonify({'error': str(e)}), 500
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>', methods=['PUT'])
 @require_auth
@@ -1150,6 +1656,48 @@ def update_experiment(experiment_id):
     db.session.commit()
     return jsonify({'experiment': exp.to_dict()})
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/stimuli', methods=['POST'])
 @require_auth
@@ -1240,6 +1788,48 @@ def upload_stimulus(experiment_id):
     except Exception as e:
         logger.error(f"Error uploading stimulus: {e}")
         return jsonify({'error': str(e)}), 500
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
@@ -1258,6 +1848,48 @@ def serve_upload(filename):
 
     return jsonify({'error': 'File not found'}), 404
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/publish', methods=['POST'])
 @require_auth
@@ -1306,6 +1938,48 @@ def publish_experiment(experiment_id):
         logger.error(f"Error publishing experiment: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/sessions', methods=['POST'])
 @limiter.limit(SESSIONS_RATE)
@@ -1403,6 +2077,49 @@ def create_session():
         logger.error(f"Error creating session: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
+
 @app.route('/api/sessions/<session_token>/subject', methods=['PUT'])
 @limiter.limit(SESSIONS_RATE)
 def update_session_subject(session_token):
@@ -1418,22 +2135,12 @@ def update_session_subject(session_token):
         new_subject_id = (data.get("subject_id") or "").strip() or None
         new_subject_name = (data.get("subject_name") or "").strip() or None
 
-        if "_" not in session_token:
-            return jsonify({'error': 'Invalid session token'}), 400
-        experiment_id = session_token.split("_", 1)[0]
-
-        experiment = Experiment.query.filter_by(experiment_id=experiment_id).first()
-        if not experiment:
-            return jsonify({'error': 'Experiment not found for session'}), 404
-
-        storage = experiment.experiment_metadata.get("exp_storage") if experiment.experiment_metadata else None
-        if not storage:
-            storage = _exp_paths(experiment)
+        experiment, storage, result_db_path = _resolve_experiment_for_session(session_token)
+        if not experiment or not storage or not result_db_path:
+            return jsonify({'error': 'Session not found'}), 404
 
         settings_db = storage["settings_db"]
-        result_db_path = lookup_result_db_for_session(settings_db, session_token)
-        if not result_db_path or not os.path.exists(result_db_path):
-            return jsonify({'error': 'Session not found'}), 404
+
 
         # --- Update participant results DB ---
         con = _connect_sqlite(result_db_path)
@@ -1492,6 +2199,49 @@ def update_session_subject(session_token):
     except Exception as e:
         logger.error(f"Error updating session subject: {e}")
         return jsonify({'error': str(e)}), 500
+    
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/sessions/<session_token>/next', methods=['GET'])
 @limiter.limit(NEXT_RATE)
@@ -1499,21 +2249,10 @@ def get_next_pair(session_token):
     """Get next stimulus pair for session using Bayesian algorithm (state stored in participant DB)."""
     try:
         # Parse experiment_id from token
-        if "_" not in session_token:
-            return jsonify({'error': 'Invalid session token'}), 400
-        experiment_id = session_token.split("_", 1)[0]
-
-        experiment = Experiment.query.filter_by(experiment_id=experiment_id).first()
-        if not experiment:
-            return jsonify({'error': 'Experiment not found for session'}), 404
-
-        storage = experiment.experiment_metadata.get("exp_storage") if experiment.experiment_metadata else None
-        if not storage:
-            storage = _exp_paths(experiment)
-
-        result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
-        if not result_db_path or not os.path.exists(result_db_path):
+        experiment, storage, result_db_path = _resolve_experiment_for_session(session_token)
+        if not experiment or not storage or not result_db_path:
             return jsonify({'error': 'Session not found'}), 404
+
 
         # Load session + state
         con = _connect_sqlite(result_db_path)
@@ -1553,8 +2292,22 @@ def get_next_pair(session_token):
         stimuli_list = [_stimulus_row_to_dict(r) for r in stim_rows]
         n_items = len(stimuli_list)
 
-        # Deserialize Bayesian state
-        from backend.bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+        # DEBUG: Write errors to a text file since there is no terminal
+        try:
+            from backend.bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+        except ImportError:
+            try:
+                from bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+            except Exception as e:
+                # WRITE THE ERROR TO A FILE
+                import traceback
+                with open("error_log.txt", "w") as f:
+                    f.write("--- CRASH REPORT ---\n")
+                    f.write(f"Error: {str(e)}\n")
+                    f.write(traceback.format_exc())
+                
+                # Still crash so the UI knows something is wrong
+                return jsonify({'error': str(e)}), 500
         bayesian_state = BayesianPreferenceState(n_items)
         bayesian_state.mu = deserialize_numpy(algo["mu"], (n_items,))
         bayesian_state.Sigma = deserialize_numpy(algo["sigma"], (n_items, n_items))
@@ -1576,6 +2329,7 @@ def get_next_pair(session_token):
 
         # Issue pair token (JWT)
         pair_token = jwt_issue_pair_token({
+            'session_id': session_token,    # <--- ADD THIS LINE
             'session_token': session_token,
             'trial_number': current_trial + 1,
             'stimulus_a_id': str(pair[0]['stimulus_id']),
@@ -1610,6 +2364,48 @@ def get_next_pair(session_token):
         logger.error(f"Error getting next pair: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/sessions/<session_token>/choice', methods=['POST'])
 @limiter.limit(CHOICE_RATE)
@@ -1618,21 +2414,10 @@ def record_choice(session_token):
     try:
         data = request.get_json() or {}
 
-        if "_" not in session_token:
-            return jsonify({'error': 'Invalid session token'}), 400
-        experiment_id = session_token.split("_", 1)[0]
-
-        experiment = Experiment.query.filter_by(experiment_id=experiment_id).first()
-        if not experiment:
-            return jsonify({'error': 'Experiment not found for session'}), 404
-
-        storage = experiment.experiment_metadata.get("exp_storage") if experiment.experiment_metadata else None
-        if not storage:
-            storage = _exp_paths(experiment)
-
-        result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
-        if not result_db_path or not os.path.exists(result_db_path):
+        experiment, storage, result_db_path = _resolve_experiment_for_session(session_token)
+        if not experiment or not storage or not result_db_path:
             return jsonify({'error': 'Session not found'}), 404
+
 
         # Validate pair token
         pair_token = data.get('pair_token')
@@ -1681,7 +2466,17 @@ def record_choice(session_token):
             if not algo:
                 return jsonify({'error': 'Algorithm state not found'}), 500
 
-            from backend.bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+            # Try importing from backend folder, otherwise try local folder
+            try:
+                from backend.bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+            except ImportError:
+                try:
+                    from bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
+                except ImportError:
+                    # Last resort: try adding current directory to path
+                    import sys
+                    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+                    from backend.bayesian_adaptive import BayesianPreferenceState, PureBayesianAdaptiveSelector
 
             n_items = len(stimuli_list)
             bayesian_state = BayesianPreferenceState(n_items)
@@ -1781,6 +2576,48 @@ def record_choice(session_token):
         logger.error(f"Error recording choice: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/results', methods=['GET'])
 @require_auth
@@ -1876,6 +2713,48 @@ def get_results(experiment_id):
     except Exception as e:
         logger.error(f"Error getting results: {e}")
         return jsonify({'error': str(e)}), 500
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/all', methods=['GET'])
 @require_auth
@@ -1906,6 +2785,48 @@ def get_all_experiments():
         return jsonify({'error': str(e)}), 500
 
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/export_choices_csv', methods=['GET'])
 @require_auth
@@ -1986,6 +2907,49 @@ def export_choices_csv(experiment_id):
     except Exception as e:
         logger.error(f"Error exporting CSV: {e}")
         return jsonify({'error': str(e)}), 500
+
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/export_clean_choices_csv', methods=['GET'])
 @require_auth
@@ -2104,6 +3068,48 @@ def _current_debrief_path():
             return p
     return os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'docs', 'debrief_default.html'))
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/consent', methods=['GET'])
 def get_consent():
@@ -2114,6 +3120,48 @@ def get_consent():
         logger.error(f"Consent serve error: {e}")
         return jsonify({'error': 'Consent not available'}), 404
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/debrief', methods=['GET'])
 def get_debrief():
@@ -2124,6 +3172,48 @@ def get_debrief():
         logger.error(f"Debrief serve error: {e}")
         return jsonify({'error': 'Debrief not available'}), 404
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/admin/upload_consent', methods=['POST'])
 @require_auth
@@ -2146,6 +3236,48 @@ def upload_consent():
     log_audit('consent_uploaded', 'admin', 'Uploaded consent file', {'filename': filename})
     return jsonify({'success': True, 'filename': filename})
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/admin/upload_debrief', methods=['POST'])
 @require_auth
@@ -2167,6 +3299,49 @@ def upload_debrief():
     
     log_audit('debrief_uploaded', 'admin', 'Uploaded debrief file', {'filename': filename})
     return jsonify({'success': True, 'filename': filename})
+
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/participants/<subject_id>/export_choices_csv', methods=['GET'])
 @require_auth
@@ -2241,6 +3416,48 @@ def export_participant_choices_csv(experiment_id, subject_id):
         logger.error(f"Error exporting participant CSV: {e}")
         return jsonify({'error': str(e)}), 500
 
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/api/experiments/<experiment_id>/participants/<subject_id>/export_clean_choices_csv', methods=['GET'])
 @require_auth
@@ -2350,11 +3567,97 @@ def internal_error(e):
 # MAIN
 # ============================================================================
 # --- ADD THIS TO SERVE FRONTEND FILES ---
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
+
 @app.route('/frontend/<path:filename>')
 def serve_frontend(filename):
     """Serves files from the frontend directory so the app works offline."""
     frontend_dir = os.path.join(os.path.dirname(app.root_path), 'frontend')
     return send_from_directory(frontend_dir, filename)
+
+def _resolve_experiment_for_session(session_token: str):
+    """
+    Resolve (experiment, storage, result_db_path) for a session_token.
+
+    Fast path:
+      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
+
+    Slow path:
+      - scan all experiments and find the one whose settings DB session_index contains this token
+
+    This fixes failures when experiment_id contains underscores.
+    """
+    # ---- Fast path: prefix parse + validate ----
+    if "_" in session_token:
+        candidate_id = session_token.split("_", 1)[0]
+        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
+        if exp:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            try:
+                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+                if result_db_path and os.path.exists(result_db_path):
+                    return exp, storage, result_db_path
+            except Exception:
+                pass
+
+    # ---- Slow path: scan all experiments ----
+    for exp in Experiment.query.all():
+        try:
+            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
+            if not storage:
+                storage = _exp_paths(exp)
+
+            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
+            if result_db_path and os.path.exists(result_db_path):
+                return exp, storage, result_db_path
+        except Exception:
+            continue
+
+    return None, None, None
 
 @app.route('/')
 def index():

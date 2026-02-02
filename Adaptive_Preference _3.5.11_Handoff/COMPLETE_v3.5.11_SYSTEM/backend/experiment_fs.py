@@ -174,9 +174,9 @@ def init_participant_results_db(results_db_path: str) -> None:
 
             CREATE TABLE IF NOT EXISTS algorithm_state (
                 session_token TEXT PRIMARY KEY,
-                mu TEXT NOT NULL,
-                sigma TEXT NOT NULL,
-                comparison_matrix TEXT NOT NULL,
+                mu BLOB NOT NULL,               -- CHANGED TO BLOB
+                sigma BLOB NOT NULL,            -- CHANGED TO BLOB
+                comparison_matrix BLOB NOT NULL,-- CHANGED TO BLOB
                 trials_completed INTEGER NOT NULL DEFAULT 0,
                 total_trials INTEGER NOT NULL,
                 state_checksum TEXT,

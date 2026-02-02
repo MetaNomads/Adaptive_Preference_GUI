@@ -1005,9 +1005,19 @@
 
                     // Get next pair from backend
                     const response = await fetch(`${API_BASE}/sessions/${state.sessionToken}/next`);
+                    
+                    // --- DEBUG: Show exact error on screen ---
                     if (!response.ok) {
-                        throw new Error(`Failed to get next trial: HTTP ${response.status}`);
+                        const errText = await response.text();
+                        try {
+                            const errJson = JSON.parse(errText);
+                            alert("CRASH ERROR: " + errJson.error); // <--- This pops up the real error
+                        } catch (e) {
+                            alert("CRASH ERROR: " + errText);
+                        }
+                        throw new Error(`Server Error: ${response.status}`);
                     }
+                    // -----------------------------------------
                     const data = await response.json();
 
                     if (data.complete || !data.stimulus_a || !data.stimulus_b) {
