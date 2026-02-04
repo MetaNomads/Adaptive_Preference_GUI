@@ -583,17 +583,19 @@
                     Your responses will help us understand visual preferences.
                 </div>
 
-                <div class="form-group" id="subjectIdGroup">
-                    <label>Your Participant ID</label>
-                    <div
-                        id="subjectIdDisplay"
-                        style="padding:8px 10px;border-radius:8px;background:#0b1020;border:1px solid #2a3359;display:inline-block;min-width:120px;">
-                        <!-- Filled automatically from the URL by the researcher (e.g., ?sub=EXP1-S001) -->
-                    </div>
-                    <p style="font-size: 13px; color: #a0aec0; margin-top: 6px;">
-                        The researcher will assign this ID; please confirm it matches the one you were given.
-                    </p>
-                </div>
+            <div class="form-group" id="subjectIdGroup">
+                <label for="subjectIdInput">Participant ID</label>
+                <input id="subjectIdInput" type="text" placeholder="e.g., S001" style="width:100%;padding:10px;border-radius:10px;border:1px solid #2a3359;background:#0b1020;color:#e2e8f0;" />
+                <p style="font-size: 13px; color: #a0aec0; margin-top: 6px;">
+                    If your researcher gave you an ID, type it here.
+                </p>
+            </div>
+
+            <div class="form-group" id="subjectNameGroup">
+                <label for="subjectNameInput">Subject Name</label>
+                <input id="subjectNameInput" type="text" placeholder="Optional" style="width:100%;padding:10px;border-radius:10px;border:1px solid #2a3359;background:#0b1020;color:#e2e8f0;" />
+            </div>
+
             </div>
             
             <div class="button-container">
@@ -714,7 +716,7 @@
 
 
         // ===== API CONFIGURATION =====
-        const API_BASE = 'http://localhost:5000/api';
+        const API_BASE = 'http://127.0.0.1:5000/api';
 
         // ===== DEMO MODE =====
         function runDemoMode(params) {
@@ -768,22 +770,53 @@
                 return;
             }
 
-            // Read participant ID from URL (e.g., ?sub=EXP1-S001)
-            const subjectParam = urlParams.get('sub');
-            if (subjectParam) {
-                state.subjectId = subjectParam;
-                const displayEl = document.getElementById('subjectIdDisplay');
-                if (displayEl) {
-                    displayEl.textContent = subjectParam;
-                }
-            } else {
-                state.subjectId = null;
-                const groupEl = document.getElementById('subjectIdGroup');
-                if (groupEl) {
-                    // Hide the whole block if no ID is provided in the URL
-                    groupEl.style.display = 'none';
+            // Check if we were passed a specific session token (e.g. from Admin Dashboard)
+            const urlToken = urlParams.get('token');
+            if (urlToken) {
+                console.log('Adopting session token from URL:', urlToken);
+                state.sessionToken = urlToken;
+                
+                // Persist it immediately so refreshes work
+                const expId = urlParams.get('exp');
+                if (expId) {
+                    localStorage.setItem(`ap_session_${expId}`, urlToken);
+                    
+                    // Also update subject info in local storage if present
+                    if (urlParams.get('sub')) {
+                        state.subjectId = urlParams.get('sub');
+                    }
+                    if (urlParams.get('name')) {
+                        state.subjectName = urlParams.get('name');
+                    }
+                    
+                    localStorage.setItem(`ap_subject_${expId}`, JSON.stringify({
+                        id: state.subjectId,
+                        name: state.subjectName
+                    }));
                 }
             }
+
+            // Prefill participant info from URL (editable)
+            const subjectParam = urlParams.get('sub');
+            const nameParam = urlParams.get('name');
+
+            const idInput = document.getElementById('subjectIdInput');
+            const nameInput = document.getElementById('subjectNameInput');
+
+            if (subjectParam && idInput) {
+                idInput.value = subjectParam;
+                state.subjectId = subjectParam;
+            } else {
+                state.subjectId = null;
+            }
+
+            if (nameParam && nameInput) {
+                nameInput.value = nameParam;
+                state.subjectName = nameParam;
+            } else {
+                state.subjectName = null;
+            }
+
             
             try {
                 // Get experiment ID from URL
@@ -793,7 +826,16 @@
                     showError('No experiment specified. Please use a valid experiment link.');
                     return;
                 }
-
+                // If the Admin Dashboard requested a forced new session, clear the old one.
+                if (urlParams.get('force_new') === 'true') {
+                    console.log('Force new session requested. Clearing previous session data.');
+                    try {
+                        localStorage.removeItem(`ap_session_${experimentId}`);
+                        localStorage.removeItem(`ap_subject_${experimentId}`);
+                        // Also clear the sessionToken in state just to be safe
+                        state.sessionToken = null;
+                    } catch(e) { console.warn('Could not clear local storage', e); }
+                }
                 // Load experiment config
                 const expResponse = await fetch(`${API_BASE}/experiments/${experimentId}`);
                 if (!expResponse.ok) throw new Error('Experiment not found');
@@ -821,6 +863,34 @@
                 } else {
                     console.warn('openConsent function not found - consent modal not shown');
                 }
+                // ✅ Restore saved session token + participant info so refresh can resume
+                try {
+                    const expId = state.experimentConfig.experiment_id;
+                    const savedToken = localStorage.getItem(`ap_session_${expId}`);
+                    if (savedToken) {
+                        state.sessionToken = savedToken;
+
+                        // Restore subject fields (optional)
+                        const savedSub = localStorage.getItem(`ap_subject_${expId}`);
+                        if (savedSub) {
+                            const parsed = JSON.parse(savedSub);
+                            if (parsed?.subject_id && document.getElementById('subjectIdInput')) {
+                                document.getElementById('subjectIdInput').value = parsed.subject_id;
+                                state.subjectId = parsed.subject_id;
+                            }
+                            if (parsed?.subject_name && document.getElementById('subjectNameInput')) {
+                                document.getElementById('subjectNameInput').value = parsed.subject_name;
+                                state.subjectName = parsed.subject_name;
+                            }
+                        }
+
+                        // Change Begin button label to make it clear it will resume
+                        const startBtn = document.querySelector('#screen-instructions .btn-primary');
+                        if (startBtn) startBtn.textContent = 'Resume Study';
+                    }
+                } catch (e) {
+                    console.warn('Unable to restore saved session:', e);
+                }
 
                 // Show instructions
                 showScreen('instructions');
@@ -833,57 +903,105 @@
 
         // ===== EXPERIMENT FLOW =====
         async function startExperiment() {
-            // Handle demo mode
-            if (window.demoMode) {
-                state.sessionStartTime = Date.now();
-                loadNextTrial();
-                return;
-            }
+                const idInput = document.getElementById('subjectIdInput');
+                const nameInput = document.getElementById('subjectNameInput');
+                
+                // Validate inputs
+                if (!idInput.value.trim()) {
+                    showError('Please enter a Participant ID.');
+                    return;
+                }
 
-            // Use subject ID determined from URL (?sub=...) during initialize()
-            const subjectId = state.subjectId;
+                state.subjectId = idInput.value.trim();
+                state.subjectName = nameInput ? nameInput.value.trim() : '';
 
-            // Disable button while we create the session
-            const startBtn = document.querySelector('#screen-instructions .btn-primary');
-            if (startBtn) {
-                startBtn.disabled = true;
-                startBtn.textContent = 'Loading...';
-            }
+                const btn = document.getElementById('startBtn');
+                btn.disabled = true;
+                btn.textContent = 'Starting...';
 
-            try {
-                const payload = {
-                    experiment_id: state.experimentConfig.experiment_id,
-                    browser_info: {
-                        userAgent: navigator.userAgent,
-                        screen: `${screen.width}x${screen.height}`,
-                        language: navigator.language
+                try {
+                    // CASE A: Existing Session (Pre-filled from Dashboard or Resumed)
+                    if (state.sessionToken) {
+                        console.log('Resuming existing session:', state.sessionToken);
+                        
+                        // Force update the subject name in case the user edited it manually
+                        try {
+                            await fetch(`${API_BASE}/sessions/${state.sessionToken}/subject`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    subject_id: state.subjectId,
+                                    subject_name: state.subjectName
+                                })
+                            });
+                        } catch (err) {
+                            console.warn('Failed to update subject name on resume:', err);
+                        }
+
+                        // Proceed to load trials
+                        document.getElementById('landingPage').style.display = 'none';
+                        document.getElementById('experimentContainer').style.display = 'block';
+                        loadNextTrial();
+                        return;
                     }
-                };
-                if (subjectId) {
-                    payload.subject_id = subjectId;
-                }
 
-                const sessionResponse = await fetch(`${API_BASE}/sessions`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!sessionResponse.ok) throw new Error('Failed to create session');
+                    // CASE B: New Session (Manually started by user)
+                    console.log('Creating new session for:', state.subjectId);
+                    
+                    const response = await fetch(`${API_BASE}/sessions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            experiment_id: state.experimentConfig.experiment_id,
+                            subject_id: state.subjectId,
+                            // FIX: Send subject_name in metadata so it appears on Dashboard
+                            subject_metadata: { 
+                                subject_name: state.subjectName,
+                                user_agent: navigator.userAgent,
+                                screen_width: window.screen.width,
+                                screen_height: window.screen.height
+                            },
+                            browser_info: {
+                                userAgent: navigator.userAgent,
+                                language: navigator.language,
+                                platform: navigator.platform,
+                                vendor: navigator.vendor
+                            }
+                        })
+                    });
 
-                const sessionData = await sessionResponse.json();
-                state.sessionToken = sessionData.session_token;
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.error || 'Failed to start session');
+                    }
 
-                state.sessionStartTime = Date.now();
-                loadNextTrial();
-            } catch (error) {
-                console.error('Error starting experiment:', error);
-                showError('Failed to start the experiment session. Please refresh.');
-                if (startBtn) {
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Begin Study';
+                    const data = await response.json();
+                    state.sessionToken = data.session_token;
+                    
+                    // Save to local storage for recovery
+                    try {
+                        const expId = state.experimentConfig.experiment_id;
+                        localStorage.setItem(`ap_session_${expId}`, state.sessionToken);
+                        localStorage.setItem(`ap_subject_${expId}`, JSON.stringify({
+                            id: state.subjectId,
+                            name: state.subjectName
+                        }));
+                    } catch(e) { console.warn('Storage error', e); }
+
+                    // UI Transition
+                    document.getElementById('landingPage').style.display = 'none';
+                    document.getElementById('experimentContainer').style.display = 'block';
+                    loadNextTrial();
+
+                } catch (error) {
+                    console.error('Start error:', error);
+                    showError(error.message);
+                    btn.disabled = false;
+                    btn.textContent = 'Begin Study';
                 }
             }
-        }
 
 
         async function loadNextTrial() {
@@ -918,6 +1036,10 @@
                 return;
             }
             
+            if (!state.sessionToken) {
+                throw new Error('No session token available');
+            }
+
                 try {
                     // Check for break
                     if (shouldShowBreak()) {
@@ -927,9 +1049,19 @@
 
                     // Get next pair from backend
                     const response = await fetch(`${API_BASE}/sessions/${state.sessionToken}/next`);
+                    
+                    // --- DEBUG: Show exact error on screen ---
                     if (!response.ok) {
-                        throw new Error(`Failed to get next trial: HTTP ${response.status}`);
+                        const errText = await response.text();
+                        try {
+                            const errJson = JSON.parse(errText);
+                            alert("CRASH ERROR: " + errJson.error); // <--- This pops up the real error
+                        } catch (e) {
+                            alert("CRASH ERROR: " + errText);
+                        }
+                        throw new Error(`Server Error: ${response.status}`);
                     }
+                    // -----------------------------------------
                     const data = await response.json();
 
                     if (data.complete || !data.stimulus_a || !data.stimulus_b) {
@@ -1162,7 +1294,7 @@
             contentEl.innerHTML = 'Loading…';
 
             try {
-                const resp = await fetch('http://localhost:5000/api/consent', {
+                const resp = await fetch('http://127.0.0.1:5000/api/consent', {
                 headers: { 'Accept': '*/*' }
                 });
 

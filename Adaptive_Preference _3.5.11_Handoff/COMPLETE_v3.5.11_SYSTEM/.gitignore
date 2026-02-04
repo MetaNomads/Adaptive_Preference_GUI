@@ -1,0 +1,60 @@
+# OS cruft
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env
+*.env
+
+# Runtime data
+backend/uploads/
+*.db
+experiments_data/
+
+# Editor/IDE
+.vscode/
+.idea/
+.venv/
+backend/venv/
+backend/.env
+backend/venv/
+
+# Node/Electron
+node_modules/
+dist/
+out/
+package-lock.json
+
+# Large Binary files
+*.exe
+*.dll
+
+# --- Adaptive Preference local databases ---
+adaptive_preference_experiments.db
+adaptive_preference_results.db
+adaptive_preference_offline.db
+*.db
+*.sqlite
+*.sqlite3
+# --- Experiment image assets (local, not versioned) ---
+**/experiment_images/
+**/experiment_images/**
+**/uploads/
+**/uploads/**
+**/static/uploads/
+**/static/uploads/**
+**/data/experiments/
+**/data/experiments/**
+# Common image types (only if you truly never want images tracked anywhere)
+# If you DO want some images tracked (icons/logo), comment these out.
+# *.png
+# *.jpg
+# *.jpeg
+# *.webp
+# *.gif

@@ -104,6 +104,17 @@
     }
     .btn-sm { padding:6px 10px; font-size:12px; border-radius: 8px; }
 
+    /* New Session Button Style (Green) */
+    .btn-new-session {
+      background-color: #48bb78;
+      border-color: #38a169;
+      margin-right: 8px;
+    }
+    .btn-new-session:hover {
+      background-color: #38a169;
+      box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
+    }
+
     .filters {
       display:flex;
       flex-wrap:wrap;
@@ -169,6 +180,18 @@
       color:#fed7d7;
       border:1px solid rgba(252,129,129,0.5);
     }
+
+    .pill-progress {
+      background: rgba(102, 126, 234, 0.12);
+      color: #667eea;
+      border: 1px solid rgba(102, 126, 234, 0.5);
+    }
+    .pill-neutral {
+      background: rgba(154, 163, 199, 0.12);
+      color: #9aa3c7;
+      border: 1px solid #4b546f;
+    }
+
     .muted { color:#9aa3c7; font-size:13px; }
 
     .section-title {
@@ -197,7 +220,6 @@
     </div>
     <nav class="nav-links" aria-label="Main navigation">
       <a href="admin_PATCHED.html">Admin Home</a>
-      <a href="experimenter_dashboard_improved.html">Experiment Builder</a>
       <a href="stimulus_library.html">Stimulus Library</a>
     </nav>
     <div class="nav-right">
@@ -212,13 +234,15 @@
         <h1 id="expName">Loading Results...</h1>
         <p id="expStatus"></p>
       </div>
-      <div style="text-align:right; min-width:220px;">
+      <div style="text-align:right; min-width:300px;">
+        <button id="newSessionBtn" class="btn btn-sm btn-new-session" style="display:none;">+ New Subject Session</button>
+        
         <button id="downloadRawBtn" class="btn btn-sm" style="display:none;">Download Raw CSV</button>
         <button id="downloadCleanBtn" class="btn btn-sm btn-secondary" style="display:none;">Download Cleaned CSV</button>
       </div>
     </div>
 
-    <div class="grid">
+<div class="grid">
       <div class="metric">
         <div class="label">Total Sessions</div>
         <div class="value" id="m_total_sessions">-</div>
@@ -232,12 +256,10 @@
         <div class="value" id="m_active">-</div>
       </div>
       <div class="metric">
-        <div class="label">Total Choices</div>
-        <div class="value" id="m_choices">-</div>
+        <div class="label">Total Pairs</div> <div class="value" id="m_choices">-</div>
       </div>
     </div>
 
-    <!-- Sessions card -->
     <div class="card">
       <div class="section-title">
         <h2 style="font-size:18px; margin:0;">Sessions</h2>
@@ -261,20 +283,27 @@
         <table>
           <thead>
             <tr>
+              <th>Subject Name</th>
               <th>Session</th>
-              <th>Participant</th>
+              <th>Participant ID</th>
+              <th>Status</th>
               <th>Started</th>
               <th>Completed</th>
+              <th>Export</th>
             </tr>
           </thead>
           <tbody id="sessionsBody">
-            <tr><td colspan="5" class="muted" style="padding:12px;">Loading…</td></tr>
+            <tr><td colspan="7" class="muted" style="padding:12px;">Loading…</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- Stimuli summary (optional) -->
+    <div style="margin-top: 12px;">
+        <button class="btn btn-sm" onclick="openAddSubjectModal()">+ Add Subject</button>
+      </div>
+      </div> ```
+
     <div class="card" id="stimuliCard" style="display:none;">
       <div class="section-title">
         <h2 style="font-size:18px; margin:0;">Stimulus Summary</h2>
@@ -296,12 +325,33 @@
     </div>
   </div>
 
+  <dialog id="addSubjectDialog" style="padding: 20px; border-radius: 12px; border: 1px solid #2a3359; background: #121a35; color: #e8ecff; min-width: 300px; backdrop-filter: blur(4px);">
+    <h3 style="margin-top: 0; margin-bottom: 16px;">Add Subject</h3>
+    <div style="margin-bottom: 16px;">
+        <label style="display:block; margin-bottom:6px; font-size:12px; color:#9aa3c7; text-transform:uppercase; letter-spacing:.05em;">Subject Name</label>
+        <input id="newSubjectName" type="text" placeholder="e.g. John Doe" style="width:100%; padding:10px; border-radius:6px; border:1px solid #2a3359; background:#0b1020; color:white;">
+    </div>
+    <div style="margin-bottom: 24px;">
+        <label style="display:block; margin-bottom:6px; font-size:12px; color:#9aa3c7; text-transform:uppercase; letter-spacing:.05em;">Participant ID</label>
+        <input id="newSubjectId" type="text" placeholder="e.g. P101" style="width:100%; padding:10px; border-radius:6px; border:1px solid #2a3359; background:#0b1020; color:white;">
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('addSubjectDialog').close()">Cancel</button>
+        <button class="btn btn-sm" onclick="saveNewSubject()">Add & Pre-fill</button>
+    </div>
+</dialog>
+
   <script>
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = 'http://127.0.0.1:5000/api';
 
     function authHeader() {
-      const t = localStorage.getItem('jwt');
+      const t = localStorage.getItem('jwt') || localStorage.getItem('token');
       return t ? { 'Authorization': 'Bearer ' + t } : {};
+    }
+    
+    // Redirect to dev login if needed
+    async function devLogin() {
+       window.location.href = 'admin_PATCHED.html'; // Or handle dev login here
     }
 
     const state = {
@@ -317,7 +367,6 @@
     }
 
     function shortSessionId(session) {
-      // Example: EXP1-S001 style – fall back to truncated UUID if not available
       if (session.simple_session_id) return session.simple_session_id;
       if (session.session_id && session.session_id.length > 8) {
         return 'S…' + session.session_id.slice(-8);
@@ -329,6 +378,40 @@
       if (session.participant_id) return session.participant_id;
       if (session.subject_id) return session.subject_id;
       return '—';
+    }
+
+    function openAddSubjectModal() {
+        document.getElementById('newSubjectName').value = '';
+        document.getElementById('newSubjectId').value = '';
+        document.getElementById('addSubjectDialog').showModal();
+    }
+
+    async function saveNewSubject() {
+        const name = document.getElementById('newSubjectName').value.trim();
+        const pid = document.getElementById('newSubjectId').value.trim();
+        if (!name || !pid) return alert('Please enter both Name and Participant ID');
+
+        const params = new URLSearchParams(window.location.search);
+        const expId = params.get('exp');
+        
+        try {
+            // Create the session immediately (status will be active but 0 trials -> 'Not Started')
+            const resp = await fetch(`${API_BASE}/sessions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeader() },
+                body: JSON.stringify({
+                    experiment_id: expId,
+                    subject_id: pid,
+                    subject_metadata: { subject_name: name }
+                })
+            });
+            if (!resp.ok) throw new Error('Failed to create session');
+            
+            document.getElementById('addSubjectDialog').close();
+            loadResults(); // Refresh table to show the new row
+        } catch(e) {
+            alert(e.message);
+        }
     }
 
     function renderMetrics(summary) {
@@ -366,27 +449,104 @@
       renderSessionsTable();
     }
 
-    function renderSessionsTable() {
+function renderSessionsTable() {
       const body = document.getElementById('sessionsBody');
       const sessions = state.filteredSessions;
+
       if (!sessions || sessions.length === 0) {
-        body.innerHTML = '<tr><td colspan="5" class="muted" style="padding:12px;">No sessions match the current filters.</td></tr>';
+        body.innerHTML = '<tr><td colspan="7" class="muted" style="padding:12px;">No sessions match the current filters.</td></tr>';
         return;
       }
+
       body.innerHTML = '';
       sessions.forEach(s => {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${shortSessionId(s)}</td>
-          <td>${shortParticipantId(s)}</td>
-          <td>${formatDateTime(s.created_at)}</td>
-          <td>${formatDateTime(s.completed_at)}</td>
-        `;
+
+        // 1. Subject Name (Clickable Link)
+        const tdName = document.createElement('td');
+        if (s.subject_name) {
+            const link = document.createElement('a');
+            link.textContent = s.subject_name;
+            link.style.color = '#667eea'; // Accent color
+            link.style.fontWeight = '600';
+            link.style.cursor = 'pointer';
+            link.style.textDecoration = 'none';
+            // PASS THE TOKEN so the interface resumes THIS session instead of creating a new one
+            const url = `subject_interface_complete.html?exp=${encodeURIComponent(s.experiment_id || '')}&sub=${encodeURIComponent(s.subject_id || '')}&name=${encodeURIComponent(s.subject_name)}&token=${s.session_token}`;
+            link.href = url;
+            link.target = '_blank';
+            
+            link.onmouseover = () => link.style.textDecoration = 'underline';
+            link.onmouseout = () => link.style.textDecoration = 'none';
+            
+            tdName.appendChild(link);
+        } else {
+            tdName.textContent = '—';
+        }
+        
+        // 2. Session ID
+        const tdSession = document.createElement('td');
+        tdSession.textContent = shortSessionId(s);
+
+        // 3. Participant ID
+        const tdParticipant = document.createElement('td');
+        tdParticipant.textContent = shortParticipantId(s);
+
+        // 4. Status
+        const tdStatus = document.createElement('td');
+        let statusHtml = '';
+        const trialsComp = s.trials_completed || 0;
+        
+        if (s.status === 'complete') {
+            statusHtml = '<span class="pill pill-ok">Finished</span>';
+        } else if (trialsComp > 0) {
+            statusHtml = '<span class="pill pill-progress">In Progress</span>';
+        } else {
+            statusHtml = '<span class="pill pill-neutral">Not Started</span>';
+        }
+        tdStatus.innerHTML = statusHtml;
+
+        // 5. Started
+        const tdStarted = document.createElement('td');
+        tdStarted.textContent = formatDateTime(s.created_at);
+
+        // 6. Completed
+        const tdCompleted = document.createElement('td');
+        tdCompleted.textContent = formatDateTime(s.completed_at);
+
+        // 7. Export
+        const tdExport = document.createElement('td');
+        const pid = (s.subject_id || s.participant_id || '').toString().trim();
+        if (!pid) {
+          tdExport.innerHTML = '<span class="muted">—</span>';
+        } else {
+          const rawBtn = document.createElement('button');
+          rawBtn.className = 'btn btn-secondary btn-sm';
+          rawBtn.textContent = 'Raw';
+          rawBtn.onclick = () => exportParticipantCsv(pid, 'raw');
+
+          const cleanBtn = document.createElement('button');
+          cleanBtn.className = 'btn btn-secondary btn-sm';
+          cleanBtn.style.marginLeft = '6px';
+          cleanBtn.textContent = 'Clean';
+          cleanBtn.onclick = () => exportParticipantCsv(pid, 'clean');
+
+          tdExport.appendChild(rawBtn);
+          tdExport.appendChild(cleanBtn);
+        }
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdSession);
+        tr.appendChild(tdParticipant);
+        tr.appendChild(tdStatus);
+        tr.appendChild(tdStarted);
+        tr.appendChild(tdCompleted);
+        tr.appendChild(tdExport);
+
         body.appendChild(tr);
       });
     }
-
-    function renderStimuliSummary(stimuliStats) {
+        function renderStimuliSummary(stimuliStats) {
       const card = document.getElementById('stimuliCard');
       const body = document.getElementById('stimuliBody');
       if (!stimuliStats || !stimuliStats.length) {
@@ -413,24 +573,47 @@
 
     function getFilenameFromContentDisposition(headerValue) {
       if (!headerValue) return null;
-
-      // Example: attachment; filename="Curvature_Main_choices_clean.csv"
       const parts = headerValue.split(';').map(p => p.trim());
-      const filenamePart = parts.find(p =>
-        p.toLowerCase().startsWith('filename=')
-      );
+      const filenamePart = parts.find(p => p.toLowerCase().startsWith('filename='));
       if (!filenamePart) return null;
-
       let filename = filenamePart.substring('filename='.length).trim();
-
-      // strip surrounding quotes if present
       if (filename.startsWith('"') && filename.endsWith('"')) {
         filename = filename.slice(1, -1);
       }
-
       return filename || null;
     }
 
+    async function exportParticipantCsv(participantId, kind) {
+      const params = new URLSearchParams(window.location.search);
+      const experimentId = params.get('exp');
+      if (!experimentId) { alert('No experiment ID provided'); return; }
+      if (!participantId) { alert('Missing participant id'); return; }
+
+      try {
+        const endpoint = kind === 'raw'
+          ? `${API_BASE}/experiments/${experimentId}/participants/${encodeURIComponent(participantId)}/export_choices_csv`
+          : `${API_BASE}/experiments/${experimentId}/participants/${encodeURIComponent(participantId)}/export_clean_choices_csv`;
+
+        const resp = await fetch(endpoint, { headers: { ...authHeader() } });
+        if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+
+        const cdHeader = resp.headers.get('Content-Disposition');
+        let filename = getFilenameFromContentDisposition(cdHeader) || `participant_${participantId}_${kind}.csv`;
+
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error(err);
+        alert(err.message || 'Export failed');
+      }
+    }
 
     async function exportCsv(kind) {
       const params = new URLSearchParams(window.location.search);
@@ -455,11 +638,9 @@
         const resp = await fetch(endpoint, { headers: { ...authHeader() } });
         if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
 
-        // Get filename from Content-Disposition, if present
         const cdHeader = resp.headers.get('Content-Disposition');
         let filename = getFilenameFromContentDisposition(cdHeader);
         if (!filename) {
-          // Fallback if server header missing for some reason
           filename = `experiment_${experimentId}_${kind}_${Date.now()}.csv`;
         }
 
@@ -482,6 +663,32 @@
       }
     }
 
+    // --- NEW LOGIC FOR GENERATING PARTICIPANT IDs AND STARTING SESSIONS ---
+
+    function buildParticipantId(expName, expId, currentCount) {
+      const baseRaw = (expName || 'EXP').toUpperCase();
+      const baseCode = (baseRaw.replace(/[^A-Z0-9]/g, '').slice(0, 4)) || 'EXP';
+      const expShort = (expId || '').replace(/[^A-Z0-9]/gi, '').slice(0, 4);
+      const nextIndex = (currentCount || 0) + 1;
+      return `${baseCode}-${expShort || 'E'}-P${String(nextIndex).padStart(3, '0')}`;
+    }
+
+    function startNewSession() {
+      if (!state.rawData || !state.rawData.experiment) {
+        alert("Experiment data not loaded yet.");
+        return;
+      }
+      
+      const exp = state.rawData.experiment;
+      // Use total_sessions from summary as the count to generate next ID
+      const count = state.rawData.summary ? (state.rawData.summary.total_sessions || 0) : 0;
+      
+      const pid = buildParticipantId(exp.name, exp.experiment_id, count);
+      
+      // Force new session by adding &force_new=true
+      const url = `subject_interface_complete.html?exp=${encodeURIComponent(exp.experiment_id)}&sub=${encodeURIComponent(pid)}&force_new=true`;
+      window.open(url, '_blank');
+    }
 
     async function loadResults() {
       try {
@@ -494,10 +701,17 @@
         }
 
         // Show buttons and wire them
-        document.getElementById('downloadRawBtn').style.display = 'inline-block';
-        document.getElementById('downloadCleanBtn').style.display = 'inline-block';
-        document.getElementById('downloadRawBtn').onclick   = () => exportCsv('raw');
-        document.getElementById('downloadCleanBtn').onclick = () => exportCsv('clean');
+        const rawBtn = document.getElementById('downloadRawBtn');
+        const cleanBtn = document.getElementById('downloadCleanBtn');
+        const newSessionBtn = document.getElementById('newSessionBtn');
+        
+        rawBtn.style.display = 'inline-block';
+        cleanBtn.style.display = 'inline-block';
+        newSessionBtn.style.display = 'inline-block';
+        
+        rawBtn.onclick   = () => exportCsv('raw');
+        cleanBtn.onclick = () => exportCsv('clean');
+        newSessionBtn.onclick = startNewSession; // Attach click handler
 
         const res = await fetch(`${API_BASE}/experiments/${experimentId}/results`, {
           headers: { 'Accept': 'application/json', ...authHeader() }

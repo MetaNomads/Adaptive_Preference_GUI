@@ -6,28 +6,36 @@
   <title>Experiment Admin - Login & Dashboard</title>
   <style>
 
+    /* CHANGED: Made nav bar taller, distinct background, larger font */
     .top-nav {
         display:flex;
         align-items:center;
         justify-content:space-between;
-        padding:12px 24px;
+        padding: 20px 32px; 
         background:#0b1020;
         border-bottom:1px solid #2a3359;
     }
+    
     .nav-logo {
-        font-weight:700;
+        font-weight:800;
+        font-size: 24px;
         letter-spacing:0.05em;
+        color: #fff;
     }
+
     .nav-links a {
-        margin:0 8px;
+        margin:0 15px;
         color:#e8ecff;
         text-decoration:none;
-        font-size:14px;
+        font-size: 16px;
+        font-weight: 600;
     }
     .nav-links a:hover,
     .nav-links a:focus {
         text-decoration:underline;
+        color: #fff;
     }
+    
     .nav-right .btn {
         padding:8px 12px;
         border-radius:999px;
@@ -168,6 +176,19 @@
       letter-spacing:.06em;
     }
     td { color:#e8ecff; font-size: 15px;}
+    
+    /* Interactive rows for navigating to results */
+    .exp-name-link {
+        color: var(--accent);
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+    }
+    .exp-name-link:hover {
+        text-decoration: underline;
+        color: #fff;
+    }
+
     .status {
       padding: 6px 10px;
       border-radius: 999px;
@@ -188,10 +209,6 @@
       background: rgba(154,163,199,0.12);
       border: 1px solid #4b546f;
       color:#9aa3c7;
-    }
-    .actions-cell a.btn {
-      margin-right: 4px;
-      margin-bottom: 4px;
     }
     .muted {
       color: var(--muted);
@@ -241,7 +258,7 @@
 
     .docs-frame {
       width: 100%;
-      height: 220px;     /* smaller height */
+      height: 220px;
       max-width: 100%;
       border: 1px solid #333;
       border-radius: 6px;
@@ -315,7 +332,6 @@
       .header-actions { width:100%; }
       .header-actions .btn { flex:1; text-align:center; }
       table { font-size: 13px; }
-      .actions-cell a.btn { display:block; width:100%; }
     }
   </style>
 </head>
@@ -326,18 +342,18 @@
     <div class="nav-left">
       <span class="nav-logo">Adaptive Preference</span>
     </div>
+    
     <nav class="nav-links" aria-label="Main navigation">
       <a href="admin_PATCHED.html">Admin Home</a>
-      <a href="experimenter_dashboard_improved.html">Experiment Builder</a>
       <a href="stimulus_library.html">Stimulus Library</a>
     </nav>
+    
     <div class="nav-right">
       <button type="button" class="btn btn-secondary" onclick="devLogin()">Dev Login</button>
       <button class="btn" type="submit">Log in</button>
     </div>
   </header>
 
-  <!-- LOGIN VIEW -->
   <div id="loginView" class="container" style="display:none;">
     <div class="login-card">
       <h1>Admin Login</h1>
@@ -362,24 +378,22 @@
     </div>
   </div>
 
-  <!-- ADMIN HOME VIEW -->
   <div id="adminView" class="container" style="display:none;">
     <div class="header">
       <div>
         <h1>Experiment Admin Dashboard</h1>
         <div class="muted">Manage experiment templates, subjects, and results.</div>
       </div>
+      
       <div class="header-actions">
         <a class="btn" href="experimenter_dashboard_improved.html">+ Create New Experiment</a>
-        <a class="btn btn-secondary" href="stimulus_library.html">Manage Stimuli</a>
-        <button class="btn btn-secondary" type="button" onclick="logout()">Logout</button>
       </div>
     </div>
 
     <div class="content">
       <h2 style="margin-top:0; font-size:18px;">All Experiments</h2>
       <p class="muted" style="margin-top:4px;">
-        Click "New subject session” to open the subject interface, or “View results” for the results dashboard.
+        Click an experiment name to view results and start sessions.
       </p>
       <table>
         <thead>
@@ -388,18 +402,15 @@
             <th>Status</th>
             <th>Created</th>
             <th>Subjects</th>
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="exp-table-body"></tbody>
       </table>
     </div>
 
-    <!-- Consent / Debrief management -->
-<section class="docs-section">
+    <section class="docs-section">
   <h3>Consent & Debrief</h3>
 
-  <!-- Consent block -->
   <details class="docs-collapse" open>
     <summary>Consent document (click to expand/collapse)</summary>
     <div class="docs-preview">
@@ -411,7 +422,6 @@
     </div>
   </details>
 
-  <!-- Debrief block -->
   <details class="docs-collapse" open>
     <summary>Debrief document (click to expand/collapse)</summary>
     <div class="docs-preview">
@@ -423,7 +433,6 @@
     </div>
   </details>
 
-  <!-- Upload controls (can sit below or above, your choice) -->
   <div class="docs-upload-row">
     <div class="docs-upload">
       <label class="docs-label">Upload consent (.pdf or .html)</label>
@@ -438,33 +447,35 @@
     </div>
   </section>
 
-  <script>
-    const API_BASE = 'http://localhost:5000/api';
+<script>
+    const API_BASE = 'http://127.0.0.1:5000/api';
 
     function authHeader() {
-      const t = localStorage.getItem('jwt');
+      const t = localStorage.getItem('jwt') || localStorage.getItem('token')
       return t ? { 'Authorization':'Bearer '+t } : {};
     }
 
     async function devLogin() {
       try {
-        const resp = await fetch('http://localhost:5000/api/auth/dev_issue_token', {
+        const resp = await fetch(`${API_BASE}/auth/dev_issue_token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: 'researcher', sub: 'dev-user' })
         });
 
         const data = await resp.json();
-        if (!resp.ok) {
-          alert('Login failed: ' + (data.error || JSON.stringify(data)));
-          return;
-        }
+        if (!resp.ok) throw new Error(data.error || 'Login failed');
 
-        localStorage.setItem('jwt', data.token);
-        alert('Logged in as ' + data.role);
+        localStorage.setItem('jwt', data.token); 
+        localStorage.setItem('user_role', data.role);
+        localStorage.setItem('user_id', data.user_id);
+
+        showToast('Dev login', 'Success', 'success');
+        window.location.href = 'experimenter_dashboard_improved.html';
+
       } catch (err) {
         console.error(err);
-        alert('Login error: ' + err.message);
+        alert('Dev login error: ' + err.message);
       }
     }
 
@@ -483,7 +494,7 @@
         <button class="toast-close" onclick="this.parentElement.remove()">×</button>
       `;
       container.appendChild(toast);
-      setTimeout(() => toast.remove(), 5000);
+      setTimeout(() => { if(toast.parentElement) toast.remove(); }, 5000);
     }
 
     function showLogin() {
@@ -519,12 +530,8 @@
           body: JSON.stringify({ email, password })
         });
         const data = await resp.json();
-        if (!resp.ok) {
-          throw new Error(data.error || 'Login failed');
-        }
-        if (!data.token) {
-          throw new Error('No token returned from server');
-        }
+        if (!resp.ok) throw new Error(data.error || 'Login failed');
+        
         localStorage.setItem('jwt', data.token);
         showToast('Welcome', 'Login successful', 'success');
         showAdmin();
@@ -538,236 +545,105 @@
       }
     }
 
-    function buildParticipantId(exp) {
-      // Base code from experiment name (letters/digits only)
-      const baseRaw = (exp.name || 'EXP').toUpperCase();
-      const baseCode = (baseRaw.replace(/[^A-Z0-9]/g, '').slice(0, 4)) || 'EXP';
-      const expShort = (exp.experiment_id || '').replace(/[^A-Z0-9]/gi, '').slice(0, 4);
-
-      // Next index based on current session_count (1-based)
-      const nextIndex = (exp.session_count || 0) + 1;
-      const padded = String(nextIndex).padStart(3, '0');
-
-      return `${baseCode}-${expShort || 'E'}-P${padded}`;
-    }
-
-    function openSubjectWithId(exp) {
-      const pid = buildParticipantId(exp);
-      const url = `subject_interface_complete.html?exp=${encodeURIComponent(exp.experiment_id)}&sub=${encodeURIComponent(pid)}`;
-      window.open(url, '_blank');
-    }
-
     async function loadExperiments() {
       const tableBody = document.getElementById('exp-table-body');
-      tableBody.innerHTML = '<tr><td colspan="5" style="padding:16px;">Loading…</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="4" style="padding:16px;">Loading…</td></tr>';
       try {
-        const response = await fetch(`${API_BASE}/experiments/all`, {
-          headers: authHeader()
-        });
+        const response = await fetch(`${API_BASE}/experiments/all`, { headers: authHeader() });
         if (!response.ok) throw new Error('Failed to fetch experiments');
         const data = await response.json();
         const experiments = data.experiments || [];
         tableBody.innerHTML = '';
 
         if (experiments.length === 0) {
-          tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No experiments found.</td></tr>';
+          tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">No experiments found.</td></tr>';
           return;
         }
 
         experiments.forEach(exp => {
           const row = document.createElement('tr');
-          const createdDate = exp.created_at ?
-            new Date(exp.created_at).toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'}) :
-            '—';
+          const createdDate = exp.created_at ? new Date(exp.created_at).toLocaleDateString() : '—';
+          const statusClass = exp.status === 'active' ? 'status-active' : (exp.status === 'draft' ? 'status-draft' : 'status-archived');
 
-          const statusClass = exp.status === 'active'
-            ? 'status-active'
-            : exp.status === 'draft' ? 'status-draft' : 'status-archived';
-
-          const subjectUrl = `subject_interface_complete.html?exp=${encodeURIComponent(exp.experiment_id)}`;
-
+          // CHANGED: Name click now maps to Results Dashboard
           row.innerHTML = `
-            <td><strong>${exp.name || '(untitled)'}</strong></td>
+            <td><strong class="exp-name-link">${exp.name || '(untitled)'}</strong></td>
             <td><span class="status ${statusClass}">${exp.status || 'unknown'}</span></td>
             <td>${createdDate}</td>
             <td>${exp.session_count || 0}</td>
-            <td class="actions-cell">
-              <button class="btn btn-new" type="button">New subject session</button>
-              <a class="btn btn-secondary" href="experimenter_dashboard_improved.html?experiment_id=${encodeURIComponent(exp.experiment_id)}">Edit template</a>
-              <a class="btn btn-secondary" href="results_dashboard.html?exp=${encodeURIComponent(exp.experiment_id)}">View results</a>
-              <button class="btn btn-secondary btn-archive" type="button">Archive</button>
-              <button class="btn btn-secondary btn-delete" type="button">Delete</button>
-            </td>
           `;
-          tableBody.appendChild(row);
           
-          const newBtn = row.querySelector('.btn-new');
-          newBtn.addEventListener('click', () => openSubjectWithId(exp));
-
-          // Archive button
-          const archiveBtn = row.querySelector('.btn-archive');
-          archiveBtn.addEventListener('click', () => archiveExperiment(exp.experiment_id));
-
-          // Delete button
-          const deleteBtn = row.querySelector('.btn-delete');
-          deleteBtn.addEventListener('click', () => deleteExperiment(exp.experiment_id, true));
-
+          row.querySelector('.exp-name-link').addEventListener('click', () => {
+             // Redirect to Results Dashboard for this experiment
+             window.location.href = `results_dashboard.html?exp=${encodeURIComponent(exp.experiment_id)}`;
+          });
+          
+          tableBody.appendChild(row);
         });
       } catch (error) {
-        console.error(error);
-        tableBody.innerHTML =
-          `<tr><td colspan="5" style="text-align:center; padding: 20px; color: #ffb4b4;">${error.message}</td></tr>`;
-        showToast('Error', error.message, 'error');
+        tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: #ffb4b4;">${error.message}</td></tr>`;
       }
     }
 
     async function archiveExperiment(experimentId) {
-      if (!confirm('Archive this experiment? It will disappear from active lists but all data will be kept.')) {
-        return;
-      }
+      if (!confirm('Archive this experiment?')) return;
       try {
         const resp = await fetch(`${API_BASE}/experiments/${encodeURIComponent(experimentId)}/archive`, {
           method: 'POST',
           headers: authHeader()
         });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`Archive failed: ${resp.status} ${txt}`);
-        }
-        showToast('Archived', 'Experiment moved to archived status', 'success');
+        if (!resp.ok) throw new Error('Archive failed');
         loadExperiments();
       } catch (err) {
-        console.error(err);
-        showToast('Archive failed', err.message, 'error');
+        showToast('Error', err.message, 'error');
       }
     }
-
-    /**
-     * deleteData = false → delete design only (backend should keep raw SQL data if you support that)
-     * deleteData = true  → delete design and associated data
-     */
-    async function deleteExperiment(experimentId, deleteData = false) {
-      const msg = deleteData
-        ? 'Delete this experiment AND its associated data? This cannot be undone.'
-        : 'Delete this experiment design but keep its data tables? (Requires backend support.)';
-
-      if (!confirm(msg)) return;
-
-      try {
-        const qs = deleteData ? '?delete_data=1' : '';
-        const resp = await fetch(`${API_BASE}/experiments/${encodeURIComponent(experimentId)}${qs}`, {
-          method: 'DELETE',
-          headers: authHeader()
-        });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`Delete failed: ${resp.status} ${txt}`);
-        }
-        showToast('Deleted', 'Experiment removed', 'success');
-        loadExperiments();
-      } catch (err) {
-        console.error(err);
-        showToast('Delete failed', err.message, 'error');
-      }
-    }
-
 
     function logout() {
       localStorage.removeItem('jwt');
+      localStorage.removeItem('token'); 
+      localStorage.removeItem('user_role');
+      localStorage.removeItem('user_id');
+
       showToast('Logged out', 'Session cleared', 'info');
       showLogin();
     }
 
-    // Dev login (kept, but now clearly a shortcut)
-    async function devLogin() {
-      try {
-        const resp = await fetch(`${API_BASE}/auth/dev_issue_token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'researcher', sub: 'dev-user' })
-        });
-        const data = await resp.json();
-        if (!resp.ok) {
-          alert('Dev login failed: ' + (data.error || JSON.stringify(data)));
-          return;
-        }
-        localStorage.setItem('jwt', data.token);
-        showToast('Dev login', 'Issued dev token for researcher role', 'success');
-        showAdmin();
-      } catch (err) {
-        console.error(err);
-        alert('Dev login error: ' + err.message);
-      }
+    function refreshConsentPreview() {
+      document.getElementById('consentFrame').src = `${API_BASE.replace('/api','')}/api/consent?ts=${Date.now()}`;
     }
 
-function refreshConsentPreview() {
-  document.getElementById('consentFrame').src = `${API_BASE.replace('/api','')}/api/consent?ts=${Date.now()}`;
-}
+    function refreshDebriefPreview() {
+      document.getElementById('debriefFrame').src = `${API_BASE.replace('/api','')}/api/debrief?ts=${Date.now()}`;
+    }
 
-function refreshDebriefPreview() {
-  document.getElementById('debriefFrame').src = `${API_BASE.replace('/api','')}/api/debrief?ts=${Date.now()}`;
-}
+    async function uploadConsent() {
+      const fileInput = document.getElementById('consentFile');
+      if (!fileInput.files.length) return alert('Choose a file first.');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      const resp = await fetch(`${API_BASE}/admin/upload_consent`, { method: 'POST', headers: authHeader(), body: formData });
+      if (resp.ok) refreshConsentPreview();
+    }
 
-async function uploadConsent() {
-  const fileInput = document.getElementById('consentFile');
-  if (!fileInput.files.length) {
-    alert('Please choose a consent file first.');
-    return;
-  }
-  const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
+    async function uploadDebrief() {
+      const fileInput = document.getElementById('debriefFile');
+      if (!fileInput.files.length) return alert('Choose a file first.');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      const resp = await fetch(`${API_BASE}/admin/upload_debrief`, { method: 'POST', headers: authHeader(), body: formData });
+      if (resp.ok) refreshDebriefPreview();
+    }
 
-  const resp = await fetch(`${API_BASE}/admin/upload_consent`, {
-    method: 'POST',
-    headers: authHeader(),  // no Content-Type here
-    body: formData
-  });
-  const data = await resp.json();
-  if (!resp.ok || data.error) {
-    alert('Failed to upload consent: ' + (data.error || ''));
-  } else {
-    alert('Consent uploaded.');
-    refreshConsentPreview();
-  }
-}
-
-async function uploadDebrief() {
-  const fileInput = document.getElementById('debriefFile');
-  if (!fileInput.files.length) {
-    alert('Please choose a debrief file first.');
-    return;
-  }
-  const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
-
-  const resp = await fetch(`${API_BASE}/admin/upload_debrief`, {
-    method: 'POST',
-    headers: authHeader(),
-    body: formData
-  });
-  const data = await resp.json();
-  if (!resp.ok || data.error) {
-    alert('Failed to upload debrief: ' + (data.error || ''));
-  } else {
-    alert('Debrief uploaded.');
-    refreshDebriefPreview();
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  refreshConsentPreview();
-  refreshDebriefPreview();
-});
-
-
-    // Initial routing
     window.addEventListener('DOMContentLoaded', () => {
-      if (localStorage.getItem('jwt')) {
+      if (localStorage.getItem('jwt') || localStorage.getItem('token')){ 
         showAdmin();
       } else {
         showLogin();
       }
+      refreshConsentPreview();
+      refreshDebriefPreview();
     });
-  </script>
+</script>
 </body>
 </html>

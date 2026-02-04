@@ -1,0 +1,13 @@
+{
+  "name": "complete_v3.5.11_system",
+  "version": "1.0.0",
+  "description": "Adaptive Preference Testing System v3.5.11",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.2.7"
+  }
+}
