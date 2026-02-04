@@ -2713,77 +2713,49 @@ def get_results(experiment_id):
     except Exception as e:
         logger.error(f"Error getting results: {e}")
         return jsonify({'error': str(e)}), 500
-def _resolve_experiment_for_session(session_token: str):
-    """
-    Resolve (experiment, storage, result_db_path) for a session_token.
-
-    Fast path:
-      - try parsing experiment_id from token prefix, but VALIDATE that the token exists in that experiment's session_index
-
-    Slow path:
-      - scan all experiments and find the one whose settings DB session_index contains this token
-
-    This fixes failures when experiment_id contains underscores.
-    """
-    # ---- Fast path: prefix parse + validate ----
-    if "_" in session_token:
-        candidate_id = session_token.split("_", 1)[0]
-        exp = Experiment.query.filter_by(experiment_id=candidate_id).first()
-        if exp:
-            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
-            if not storage:
-                storage = _exp_paths(exp)
-
-            try:
-                result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
-                if result_db_path and os.path.exists(result_db_path):
-                    return exp, storage, result_db_path
-            except Exception:
-                pass
-
-    # ---- Slow path: scan all experiments ----
-    for exp in Experiment.query.all():
-        try:
-            storage = exp.experiment_metadata.get("exp_storage") if exp.experiment_metadata else None
-            if not storage:
-                storage = _exp_paths(exp)
-
-            result_db_path = lookup_result_db_for_session(storage["settings_db"], session_token)
-            if result_db_path and os.path.exists(result_db_path):
-                return exp, storage, result_db_path
-        except Exception:
-            continue
-
-    return None, None, None
 
 @app.route('/api/experiments/all', methods=['GET'])
 @require_auth
 @require_roles(['admin', 'researcher'])
 def get_all_experiments():
-    """Get all experiments for the admin dashboard (core DB + session counts from results DB)."""
+    """Get all experiments for the admin dashboard (core DB + session counts from file system)."""
     try:
         experiments = Experiment.query \
             .filter(Experiment.archived_at.is_(None)) \
             .order_by(Experiment.created_at.desc()) \
             .all()
 
-        counts = dict(
-            db.session.query(Session.experiment_id, db.func.count(Session.session_id))
-              .group_by(Session.experiment_id)
-              .all()
-        )
-
         results = []
         for exp in experiments:
             exp_data = exp.to_dict()
-            exp_data['session_count'] = int(counts.get(str(exp.experiment_id), 0))
+            
+            # --- FIX: Count sessions by counting .db files in participants folder ---
+            count = 0
+            try:
+                # 1. Resolve Storage Paths
+                storage = exp.experiment_metadata.get("exp_storage")
+                if not storage:
+                    storage = _exp_paths(exp) # Ensure path exists
+                
+                participants_dir = storage.get("participants_dir")
+                
+                # 2. Count .db files in the participants directory
+                if participants_dir and os.path.exists(participants_dir):
+                    # List all files ending in .db (excluding temporary/journal files like .db-wal)
+                    files = [f for f in os.listdir(participants_dir) if f.endswith('.db')]
+                    count = len(files)
+
+            except Exception as e:
+                # Log error but allow dashboard to load with 0 count
+                logger.warning(f"Could not count session files for experiment {exp.name}: {e}")
+            
+            exp_data['session_count'] = count
             results.append(exp_data)
 
         return jsonify({'success': True, 'experiments': results})
     except Exception as e:
         logger.error(f"Error getting all experiments: {e}")
         return jsonify({'error': str(e)}), 500
-
 
 def _resolve_experiment_for_session(session_token: str):
     """
