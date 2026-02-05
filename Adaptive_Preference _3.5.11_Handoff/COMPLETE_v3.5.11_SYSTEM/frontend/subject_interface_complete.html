@@ -903,106 +903,76 @@
 
         // ===== EXPERIMENT FLOW =====
         async function startExperiment() {
-                const idInput = document.getElementById('subjectIdInput');
-                const nameInput = document.getElementById('subjectNameInput');
-                
-                // Validate inputs
-                if (!idInput.value.trim()) {
-                    showError('Please enter a Participant ID.');
+            const idInput = document.getElementById('subjectIdInput');
+            const nameInput = document.getElementById('subjectNameInput');
+            
+            if (!idInput.value.trim()) {
+                alert('Please enter a Participant ID.');
+                return;
+            }
+
+            state.subjectId = idInput.value.trim();
+            state.subjectName = nameInput.value.trim();
+            
+            const btn = document.getElementById('startBtn') || document.querySelector('#screen-instructions .btn-primary');
+            if(btn) {
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
+            }
+
+            try {
+                // CASE A: Resume Existing Session
+                if (state.sessionToken) {
+                    // Try to update name, but ignore errors if it fails (so we can still resume)
+                    try {
+                        await fetch(`${API_BASE}/sessions/${state.sessionToken}/subject`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                subject_id: state.subjectId,
+                                subject_name: state.subjectName
+                            })
+                        });
+                    } catch (e) { 
+                        console.warn('Name update failed (non-critical), continuing to resume...', e); 
+                    }
+
+                    // Proceed to trial immediately
+                    loadNextTrial();
                     return;
                 }
 
-                state.subjectId = idInput.value.trim();
-                state.subjectName = nameInput ? nameInput.value.trim() : '';
+                // CASE B: Create New Session
+                const response = await fetch(`${API_BASE}/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        experiment_id: state.experimentConfig.experiment_id,
+                        subject_id: state.subjectId,
+                        subject_metadata: { subject_name: state.subjectName }
+                    })
+                });
 
-                const btn = document.getElementById('startBtn');
-                btn.disabled = true;
-                btn.textContent = 'Starting...';
+                if (!response.ok) throw new Error('Failed to create session');
+                const data = await response.json();
+                state.sessionToken = data.session_token;
 
-                try {
-                    // CASE A: Existing Session (Pre-filled from Dashboard or Resumed)
-                    if (state.sessionToken) {
-                        console.log('Resuming existing session:', state.sessionToken);
-                        
-                        // Force update the subject name in case the user edited it manually
-                        try {
-                            await fetch(`${API_BASE}/sessions/${state.sessionToken}/subject`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    subject_id: state.subjectId,
-                                    subject_name: state.subjectName
-                                })
-                            });
-                        } catch (err) {
-                            console.warn('Failed to update subject name on resume:', err);
-                        }
+                // Save to local storage
+                const expId = state.experimentConfig.experiment_id;
+                localStorage.setItem(`ap_session_${expId}`, state.sessionToken);
+                localStorage.setItem(`ap_subject_${expId}`, JSON.stringify({ id: state.subjectId, name: state.subjectName }));
 
-                        // Proceed to load trials
-                        document.getElementById('landingPage').style.display = 'none';
-                        document.getElementById('experimentContainer').style.display = 'block';
-                        loadNextTrial();
-                        return;
-                    }
+                loadNextTrial();
 
-                    // CASE B: New Session (Manually started by user)
-                    console.log('Creating new session for:', state.subjectId);
-                    
-                    const response = await fetch(`${API_BASE}/sessions`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            experiment_id: state.experimentConfig.experiment_id,
-                            subject_id: state.subjectId,
-                            // FIX: Send subject_name in metadata so it appears on Dashboard
-                            subject_metadata: { 
-                                subject_name: state.subjectName,
-                                user_agent: navigator.userAgent,
-                                screen_width: window.screen.width,
-                                screen_height: window.screen.height
-                            },
-                            browser_info: {
-                                userAgent: navigator.userAgent,
-                                language: navigator.language,
-                                platform: navigator.platform,
-                                vendor: navigator.vendor
-                            }
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.error || 'Failed to start session');
-                    }
-
-                    const data = await response.json();
-                    state.sessionToken = data.session_token;
-                    
-                    // Save to local storage for recovery
-                    try {
-                        const expId = state.experimentConfig.experiment_id;
-                        localStorage.setItem(`ap_session_${expId}`, state.sessionToken);
-                        localStorage.setItem(`ap_subject_${expId}`, JSON.stringify({
-                            id: state.subjectId,
-                            name: state.subjectName
-                        }));
-                    } catch(e) { console.warn('Storage error', e); }
-
-                    // UI Transition
-                    document.getElementById('landingPage').style.display = 'none';
-                    document.getElementById('experimentContainer').style.display = 'block';
-                    loadNextTrial();
-
-                } catch (error) {
-                    console.error('Start error:', error);
-                    showError(error.message);
+            } catch (error) {
+                console.error(error);
+                alert(error.message);
+                if(btn) {
                     btn.disabled = false;
                     btn.textContent = 'Begin Study';
                 }
             }
-
+        }
 
         async function loadNextTrial() {
             // Handle demo mode

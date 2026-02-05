@@ -235,7 +235,7 @@
         <p id="expStatus"></p>
       </div>
       <div style="text-align:right; min-width:300px;">
-        <button id="newSessionBtn" class="btn btn-sm btn-new-session" style="display:none;">+ New Subject Session</button>
+        <button id="btnStartNew" class="btn btn-sm btn-new-session" style="display:none;" onclick="startNewSession()">+ New Subject Session</button>
         
         <button id="downloadRawBtn" class="btn btn-sm" style="display:none;">Download Raw CSV</button>
         <button id="downloadCleanBtn" class="btn btn-sm btn-secondary" style="display:none;">Download Cleaned CSV</button>
@@ -471,11 +471,14 @@ function renderSessionsTable() {
             link.style.fontWeight = '600';
             link.style.cursor = 'pointer';
             link.style.textDecoration = 'none';
-            // PASS THE TOKEN so the interface resumes THIS session instead of creating a new one
-            const url = `subject_interface_complete.html?exp=${encodeURIComponent(s.experiment_id || '')}&sub=${encodeURIComponent(s.subject_id || '')}&name=${encodeURIComponent(s.subject_name)}&token=${s.session_token}`;
+
+            const params = new URLSearchParams(window.location.search);
+            const expId = params.get('exp'); 
+            
+            const url = `subject_interface_complete.html?exp=${encodeURIComponent(expId)}&sub=${encodeURIComponent(s.subject_id || '')}&name=${encodeURIComponent(s.subject_name)}&token=${s.session_token}`;
             link.href = url;
             link.target = '_blank';
-            
+
             link.onmouseover = () => link.style.textDecoration = 'underline';
             link.onmouseout = () => link.style.textDecoration = 'none';
             
@@ -674,23 +677,29 @@ function renderSessionsTable() {
     }
 
     function startNewSession() {
-      if (!state.rawData || !state.rawData.experiment) {
-        alert("Experiment data not loaded yet.");
-        return;
-      }
-      
-      const exp = state.rawData.experiment;
-      // Use total_sessions from summary as the count to generate next ID
-      const count = state.rawData.summary ? (state.rawData.summary.total_sessions || 0) : 0;
-      
-      const pid = buildParticipantId(exp.name, exp.experiment_id, count);
-      
-      // Force new session by adding &force_new=true
-      const url = `subject_interface_complete.html?exp=${encodeURIComponent(exp.experiment_id)}&sub=${encodeURIComponent(pid)}&force_new=true`;
-      window.open(url, '_blank');
-    }
+            // Safety check: ensure data is loaded
+            if (!state.rawData || !state.rawData.experiment) {
+                alert("Experiment data is still loading. Please wait a moment.");
+                return;
+            }
 
-    async function loadResults() {
+            const exp = state.rawData.experiment;
+            // Calculate next participant ID based on total sessions count
+            const count = state.rawData.summary ? (state.rawData.summary.total_sessions || 0) : 0;
+            
+            // Helper to generate ID (e.g., EXP-E123-P005)
+            const baseRaw = (exp.name || 'EXP').toUpperCase();
+            const baseCode = (baseRaw.replace(/[^A-Z0-9]/g, '').slice(0, 4)) || 'EXP';
+            const expShort = (exp.experiment_id || '').replace(/[^A-Z0-9]/gi, '').slice(0, 4);
+            const nextIndex = count + 1;
+            const pid = `${baseCode}-${expShort || 'E'}-P${String(nextIndex).padStart(3, '0')}`;
+            
+            // Open the subject interface with force_new=true to clear any cached sessions
+            const url = `subject_interface_complete.html?exp=${encodeURIComponent(exp.experiment_id)}&sub=${encodeURIComponent(pid)}&force_new=true`;
+            window.open(url, '_blank');
+        }
+
+  async function loadResults() {
       try {
         const params = new URLSearchParams(window.location.search);
         const experimentId = params.get('exp');
@@ -700,18 +709,22 @@ function renderSessionsTable() {
           return;
         }
 
-        // Show buttons and wire them
         const rawBtn = document.getElementById('downloadRawBtn');
         const cleanBtn = document.getElementById('downloadCleanBtn');
-        const newSessionBtn = document.getElementById('newSessionBtn');
+        const newSessionBtn = document.getElementById('btnStartNew'); // Updated ID
         
-        rawBtn.style.display = 'inline-block';
-        cleanBtn.style.display = 'inline-block';
-        newSessionBtn.style.display = 'inline-block';
-        
-        rawBtn.onclick   = () => exportCsv('raw');
-        cleanBtn.onclick = () => exportCsv('clean');
-        newSessionBtn.onclick = startNewSession; // Attach click handler
+        if (rawBtn) {
+            rawBtn.style.display = 'inline-block';
+            rawBtn.onclick = () => exportCsv('raw');
+        }
+        if (cleanBtn) {
+            cleanBtn.style.display = 'inline-block';
+            cleanBtn.onclick = () => exportCsv('clean');
+        }
+        if (newSessionBtn) {
+            newSessionBtn.style.display = 'inline-block';
+            // onclick is already handled in the HTML
+        }
 
         const res = await fetch(`${API_BASE}/experiments/${experimentId}/results`, {
           headers: { 'Accept': 'application/json', ...authHeader() }
@@ -733,7 +746,7 @@ function renderSessionsTable() {
         console.error(e);
         document.getElementById('expStatus').innerText = e.message;
         const body = document.getElementById('sessionsBody');
-        body.innerHTML = `<tr><td colspan="5" class="muted" style="padding:12px;">${e.message}</td></tr>`;
+        if (body) body.innerHTML = `<tr><td colspan="7" class="muted" style="padding:12px;">${e.message}</td></tr>`;
       }
     }
 

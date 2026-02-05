@@ -2065,8 +2065,14 @@ def create_session():
             con.close()
 
         # Index session_token -> result_db_path inside settings DB
-        insert_session_index(storage["settings_db"], session_token, subject_id, subject_name, result_db_path, created_at)
-
+        insert_session_index(
+            storage["settings_db"], 
+            session_token, 
+            subject_id, 
+            subject_name,  
+            result_db_path, 
+            created_at
+        )
 
         return jsonify({
             'success': True,
