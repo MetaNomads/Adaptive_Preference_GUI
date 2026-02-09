@@ -51,6 +51,7 @@ except ImportError:
 # ============================================================================
 
 app = Flask(__name__)
+
 # Allow both localhost and the 127.0.0.1 IP on port 5000
 CORS(app, resources={
     r"/api/*": {
@@ -61,6 +62,17 @@ CORS(app, resources={
         "expose_headers": ["Content-Disposition"]
     }
 })
+
+# --- NEW: Register the Auth Blueprint ---
+try:
+    # Try importing from backend package first
+    from backend.auth import auth_bp
+except ImportError:
+    # Fallback if running from the same directory
+    from auth import auth_bp
+
+app.register_blueprint(auth_bp, url_prefix='/api/auth')
+# ----------------------------------------
 
 
 # --- SINGLE SQLITE CORE DATABASE (no separate results DB) ---
