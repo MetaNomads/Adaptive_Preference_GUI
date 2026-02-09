@@ -762,142 +762,124 @@
         }
 
         // ===== INITIALIZATION =====
+// ===== REPLACEMENT INITIALIZE FUNCTION =====
         async function initialize() {
-            // Check for demo mode
             const urlParams = new URLSearchParams(window.location.search);
+            const experimentId = urlParams.get('exp');
+
+            // 1. Force New Session Logic
+            if (urlParams.get('force_new') === 'true') {
+                if (experimentId) {
+                    localStorage.removeItem(`ap_session_${experimentId}`);
+                    localStorage.removeItem(`ap_subject_${experimentId}`);
+                }
+                state.sessionToken = null;
+            }
+
+            // 2. Demo Mode
             if (urlParams.get('demo') === 'true') {
-                runDemoMode(urlParams);
+                if (typeof runDemoMode === 'function') runDemoMode(urlParams);
                 return;
             }
 
-            // Check if we were passed a specific session token (e.g. from Admin Dashboard)
+            // 3. Handle Tokens & Determine "Resume" vs "Begin" status
             const urlToken = urlParams.get('token');
+            let isResume = false;
+            
+            // Check if we have seen this specific session on this device before
+            const localToken = experimentId ? localStorage.getItem(`ap_session_${experimentId}`) : null;
+
             if (urlToken) {
-                console.log('Adopting session token from URL:', urlToken);
                 state.sessionToken = urlToken;
-                
-                // Persist it immediately so refreshes work
-                const expId = urlParams.get('exp');
-                if (expId) {
-                    localStorage.setItem(`ap_session_${expId}`, urlToken);
-                    
-                    // Also update subject info in local storage if present
-                    if (urlParams.get('sub')) {
-                        state.subjectId = urlParams.get('sub');
-                    }
-                    if (urlParams.get('name')) {
-                        state.subjectName = urlParams.get('name');
-                    }
-                    
-                    localStorage.setItem(`ap_subject_${expId}`, JSON.stringify({
-                        id: state.subjectId,
-                        name: state.subjectName
-                    }));
+                // Only "Resume" if the token matches what we have saved locally
+                if (localToken === urlToken) {
+                    isResume = true;
                 }
+                // Always save the token so future refreshes work
+                if (experimentId) {
+                    localStorage.setItem(`ap_session_${experimentId}`, urlToken);
+                }
+            } else if (localToken) {
+                // No token in URL, but we have one saved -> Resume
+                state.sessionToken = localToken;
+                isResume = true;
             }
 
-            // Prefill participant info from URL (editable)
+            // 4. Set Inputs & LOCK Participant ID
             const subjectParam = urlParams.get('sub');
             const nameParam = urlParams.get('name');
-
-            const idInput = document.getElementById('subjectIdInput');
-            const nameInput = document.getElementById('subjectNameInput');
-
-            if (subjectParam && idInput) {
-                idInput.value = subjectParam;
-                state.subjectId = subjectParam;
-            } else {
-                state.subjectId = null;
-            }
-
-            if (nameParam && nameInput) {
-                nameInput.value = nameParam;
-                state.subjectName = nameParam;
-            } else {
-                state.subjectName = null;
-            }
-
             
-            try {
-                // Get experiment ID from URL
-                const experimentId = urlParams.get('exp');
-                
-                if (!experimentId) {
-                    showError('No experiment specified. Please use a valid experiment link.');
-                    return;
+            if (subjectParam) {
+                const idInput = document.getElementById('subjectIdInput');
+                if (idInput) {
+                    idInput.value = subjectParam;
+                    // --- LOCK THE INPUT ---
+                    idInput.disabled = true;
+                    idInput.style.opacity = '0.7';
+                    idInput.style.backgroundColor = '#e2e8f0';
+                    idInput.style.cursor = 'not-allowed';
+                    idInput.title = "Participant ID is locked for this session";
                 }
-                // If the Admin Dashboard requested a forced new session, clear the old one.
-                if (urlParams.get('force_new') === 'true') {
-                    console.log('Force new session requested. Clearing previous session data.');
+                state.subjectId = subjectParam;
+            }
+            
+            if (nameParam) {
+                const nameInput = document.getElementById('subjectNameInput');
+                if (nameInput) nameInput.value = nameParam;
+                state.subjectName = nameParam;
+            }
+
+            // Restore saved subject details if resuming
+            if (experimentId && !subjectParam) {
+                const savedSub = localStorage.getItem(`ap_subject_${experimentId}`);
+                if (savedSub) {
                     try {
-                        localStorage.removeItem(`ap_session_${experimentId}`);
-                        localStorage.removeItem(`ap_subject_${experimentId}`);
-                        // Also clear the sessionToken in state just to be safe
-                        state.sessionToken = null;
-                    } catch(e) { console.warn('Could not clear local storage', e); }
+                        const parsed = JSON.parse(savedSub);
+                        const idIn = document.getElementById('subjectIdInput');
+                        const nameIn = document.getElementById('subjectNameInput');
+                        if (parsed.id && idIn && !idIn.value) idIn.value = parsed.id;
+                        if (parsed.name && nameIn && !nameIn.value) nameIn.value = parsed.name;
+                    } catch(e) {}
                 }
-                // Load experiment config
+            }
+
+            // 5. Load Experiment Config
+            try {
+                if (!experimentId) throw new Error('No experiment specified');
+
                 const expResponse = await fetch(`${API_BASE}/experiments/${experimentId}`);
                 if (!expResponse.ok) throw new Error('Experiment not found');
-                
                 const expData = await expResponse.json();
                 state.experimentConfig = expData.experiment;
                 state.totalTrials = state.experimentConfig.max_trials;
 
-                // Update UI with experiment info
-                document.getElementById('experimentTitle').textContent = 
-                    state.experimentConfig.name || 'Preference Study';
-                document.getElementById('experimentDescription').textContent = 
-                    state.experimentConfig.description || 'Thank you for participating';
-                document.getElementById('customInstructions').textContent = 
-                    state.experimentConfig.instructions || 
-                    'You will be shown pairs of images. Please select the image you prefer.';
-                // Show progress bar if configured
-                if (state.experimentConfig.show_progress) {
-                    document.getElementById('progressContainer').style.display = 'block';
+                // UI Updates
+                document.getElementById('experimentTitle').textContent = state.experimentConfig.name;
+                document.getElementById('experimentDescription').textContent = state.experimentConfig.description;
+                document.getElementById('customInstructions').textContent = state.experimentConfig.instructions;
+                
+                const prog = document.getElementById('progressContainer');
+                if (state.experimentConfig.show_progress && prog) {
+                    prog.style.display = 'block';
                 }
 
-                // [FIX v3.5.9] CALL THE CONSENT MODAL for REAL participants
-                if (typeof openConsent === 'function') {
-                    openConsent();
-                } else {
-                    console.warn('openConsent function not found - consent modal not shown');
-                }
-                // ✅ Restore saved session token + participant info so refresh can resume
-                try {
-                    const expId = state.experimentConfig.experiment_id;
-                    const savedToken = localStorage.getItem(`ap_session_${expId}`);
-                    if (savedToken) {
-                        state.sessionToken = savedToken;
-
-                        // Restore subject fields (optional)
-                        const savedSub = localStorage.getItem(`ap_subject_${expId}`);
-                        if (savedSub) {
-                            const parsed = JSON.parse(savedSub);
-                            if (parsed?.subject_id && document.getElementById('subjectIdInput')) {
-                                document.getElementById('subjectIdInput').value = parsed.subject_id;
-                                state.subjectId = parsed.subject_id;
-                            }
-                            if (parsed?.subject_name && document.getElementById('subjectNameInput')) {
-                                document.getElementById('subjectNameInput').value = parsed.subject_name;
-                                state.subjectName = parsed.subject_name;
-                            }
-                        }
-
-                        // Change Begin button label to make it clear it will resume
-                        const startBtn = document.querySelector('#screen-instructions .btn-primary');
-                        if (startBtn) startBtn.textContent = 'Resume Study';
+                // 6. Set Button Text based on Resume Status
+                const startBtn = document.getElementById('startBtn');
+                if (startBtn) {
+                    if (isResume) {
+                        startBtn.textContent = 'Resume Study';
+                    } else {
+                        startBtn.textContent = 'Begin Study';
                     }
-                } catch (e) {
-                    console.warn('Unable to restore saved session:', e);
                 }
 
-                // Show instructions
+                // Show Consent
+                if (typeof openConsent === 'function') openConsent();
                 showScreen('instructions');
 
             } catch (error) {
-                console.error('Initialization error:', error);
-                showError('Failed to load experiment. Please contact the researcher.');
+                console.error(error);
+                alert(error.message);
             }
         }
 
@@ -1518,21 +1500,30 @@
         };
 
 
+// ===== STARTUP LISTENER (Bottom of file) =====
         window.addEventListener('DOMContentLoaded', () => {
+            // 1. START THE APP (This is the critical missing line)
+            initialize();
+
+            // 2. Check for offline data (Keep your existing logic)
             try {
                 const saved = localStorage.getItem('pendingChoices');
                 if (saved) {
-                    networkState.requestQueue = JSON.parse(saved);
-                    if (networkState.isOnline && networkState.requestQueue.length > 0) {
-                        setTimeout(() => processQueue(), 2000);
+                    // Ensure networkState exists before using it
+                    if (typeof networkState !== 'undefined') {
+                        networkState.requestQueue = JSON.parse(saved);
+                        if (networkState.isOnline && networkState.requestQueue.length > 0) {
+                            setTimeout(() => {
+                                if (typeof processQueue === 'function') processQueue();
+                            }, 2000);
+                        }
                     }
                 }
             } catch (e) {
                 console.error('Failed to load queued choices:', e);
             }
         });
-
-</script>
+    </script>
 </body>
 </html>
 
