@@ -235,9 +235,6 @@
         <p id="expStatus"></p>
       </div>
       <div style="text-align:right; min-width:300px;">
-
-        
-        <button id="downloadRawBtn" class="btn btn-sm" style="display:none;">Download Raw CSV</button>
         <button id="downloadCleanBtn" class="btn btn-sm btn-secondary" style="display:none;">Download Cleaned CSV</button>
       </div>
     </div>
@@ -530,10 +527,10 @@ function renderSessionsTable() {
         if (!pid) {
           tdExport.innerHTML = '<span class="muted">—</span>';
         } else {
-          const rawBtn = document.createElement('button');
-          rawBtn.className = 'btn btn-secondary btn-sm';
-          rawBtn.textContent = 'Raw';
-          rawBtn.onclick = () => exportParticipantCsv(pid, 'raw');
+         // const rawBtn = document.createElement('button');
+         // rawBtn.className = 'btn btn-secondary btn-sm';
+          //rawBtn.textContent = 'Raw';
+         // rawBtn.onclick = () => exportParticipantCsv(pid, 'raw');
 
           const cleanBtn = document.createElement('button');
           cleanBtn.className = 'btn btn-secondary btn-sm';
@@ -541,7 +538,7 @@ function renderSessionsTable() {
           cleanBtn.textContent = 'Clean';
           cleanBtn.onclick = () => exportParticipantCsv(pid, 'clean');
 
-          tdExport.appendChild(rawBtn);
+         // tdExport.appendChild(rawBtn);
           tdExport.appendChild(cleanBtn);
         }
 

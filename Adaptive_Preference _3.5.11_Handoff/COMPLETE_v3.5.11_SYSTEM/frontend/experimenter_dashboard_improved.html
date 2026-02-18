@@ -1427,6 +1427,15 @@
 
                     <div class="form-group">
                             <div class="label-with-icon">
+                                <label for="breakTimeLimit">Break Duration (seconds)</label>
+                                <span class="info-icon" onclick="showHelp('breakTimeLimit')">?</span>
+                            </div>
+                            <div class="help-text">Wait time before the 'Continue' button appears. Set 0 for immediate button.</div>
+                            <input type="number" id="breakTimeLimit" min="0" step="1" placeholder="e.g. 30">
+                        </div>
+
+                    <div class="form-group">
+                            <div class="label-with-icon">
                                 <label for="timeLimit">Time Limit per Trial (seconds)</label>
                             </div>
                             <div class="help-text">Set to 0 for no time limit.</div>
@@ -2339,6 +2348,7 @@
                 enable_counterbalancing: document.getElementById('counterbalance').checked,
                 break_interval: parseInt(document.getElementById('breakInterval').value),
                 time_limit: parseInt(document.getElementById('timeLimit').value) || 0,
+                break_time_limit: parseInt(document.getElementById('breakTimeLimit').value) || 0,
                 instructions: document.getElementById('instructions').value,
                 completion_message: document.getElementById('completionMessage').value,
                 epsilon: 0.01,

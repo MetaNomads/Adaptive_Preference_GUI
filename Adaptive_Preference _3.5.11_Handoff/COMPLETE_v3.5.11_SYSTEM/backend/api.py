@@ -1534,9 +1534,11 @@ def create_experiment():
             instructions=data.get('instructions'),
             completion_message=data.get('completion_message'),
             status=data.get('status', 'draft'),
-            experiment_metadata={
+           experiment_metadata={
                 **(data.get('experiment_metadata', {}) or {}), 
-                'time_limit': int(data.get('time_limit', 0))})
+                'time_limit': int(data.get('time_limit', 0)),
+                'break_time_limit': int(data.get('break_time_limit', 0))
+           })
 
         db.session.add(exp)
         db.session.commit()

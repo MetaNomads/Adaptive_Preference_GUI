@@ -637,31 +637,14 @@
 
         <!-- SCREEN 4: Break -->
         <div id="screen-break" class="hidden">
-            <div class="break-screen">
-                <div class="break-icon">☕</div>
+            <div class="completion-screen"> <div style="font-size: 3rem; margin-bottom: 20px;">☕</div>
                 <h2>Take a Break</h2>
-                <p>You're doing great! Take a moment to rest before continuing.</p>
+                <p>You have completed a set of trials. Please rest your eyes.</p>
                 
-                <div class="stats-display">
-                    <div class="stat-item">
-                        <span class="stat-value" id="breakTrialsCompleted">-</span>
-                        <span class="stat-label">Trials Completed</span>
+                <div id="breakTimer" style="font-size: 1.5rem; font-weight: bold; color: #555; margin: 20px 0; min-height: 30px;">
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-value" id="breakTrialsRemaining">-</span>
-                        <span class="stat-label">Trials Remaining</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-value" id="breakTimeElapsed">-</span>
-                        <span class="stat-label">Time Elapsed</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="button-container">
-                <button class="btn btn-primary" onclick="continueAfterBreak()">
-                    Continue Study
-                </button>
+                
+                <button id="btn-resume" class="btn" onclick="endBreak()" style="display: none;">Continue Experiment</button>
             </div>
         </div>
 
@@ -690,7 +673,9 @@ const state = {
             trialStartTime: null,
             choices: [],
             sessionStartTime: null,
-            timerInterval: null  
+            timerInterval: null,
+            returningFromBreak: false,
+            breakIntervalId: null
         };
 
         // ===== API CONFIGURATION =====
@@ -935,6 +920,27 @@ const state = {
         }
 
         async function loadNextTrial() {
+            // --- BREAK CHECK LOGIC ---
+            const config = state.experimentConfig;
+            const breakInt = config.break_interval;
+
+            // Trigger break if: 
+            // 1. Break interval is set (>0)
+            // 2. We have done some trials
+            // 3. Current trial count is a multiple of the interval
+            // 4. We are NOT currently returning from a break (prevents infinite loop)
+            if (breakInt > 0 && 
+                state.trialsCompleted > 0 && 
+                (state.trialsCompleted % breakInt === 0) && 
+                !state.returningFromBreak) {
+                
+                showBreakScreen();
+                return; // STOP here. Do not load images yet.
+            }
+            
+            // Reset the flag so the NEXT break triggers correctly
+            state.returningFromBreak = false;
+            
             // Handle demo mode
             if (window.demoMode) {
                 if (window.demoTrialNum >= state.totalTrials) {
@@ -971,14 +977,9 @@ const state = {
             }
 
                 try {
-                    // Check for break
-                    if (shouldShowBreak()) {
-                        showBreak();
-                        return;
-                    }
-
                     // Get next pair from backend
                     const response = await fetch(`${API_BASE}/sessions/${state.sessionToken}/next`);
+
                     
                     // --- DEBUG: Show exact error on screen ---
                     if (!response.ok) {
@@ -1150,6 +1151,53 @@ const state = {
         }
 
         // ===== HELPER FUNCTIONS =====
+        function showBreakScreen() {
+            showScreen('break');
+            
+            // 1. Get the time limit from metadata (default to 0 if missing)
+            const limit = state.experimentConfig.experiment_metadata?.break_time_limit || 0;
+            
+            const btn = document.getElementById('btn-resume');
+            const timerDisplay = document.getElementById('breakTimer');
+            
+            // 2. Reset UI
+            if (state.breakIntervalId) clearInterval(state.breakIntervalId);
+            btn.style.display = 'none'; // Hide button initially
+            timerDisplay.textContent = '';
+
+            // 3. Handle Timer
+            if (limit > 0) {
+                let timeLeft = limit;
+                timerDisplay.textContent = `Please wait ${timeLeft}s...`;
+                
+                // Start Countdown
+                state.breakIntervalId = setInterval(() => {
+                    timeLeft--;
+                    if (timeLeft <= 0) {
+                        // Timer Finished: Show Button
+                        clearInterval(state.breakIntervalId);
+                        timerDisplay.textContent = 'Ready to continue.';
+                        btn.style.display = 'inline-block';
+                    } else {
+                        timerDisplay.textContent = `Please wait ${timeLeft}s...`;
+                    }
+                }, 1000);
+            } else {
+                // No Timer: Show button immediately
+                btn.style.display = 'inline-block';
+            }
+        }
+
+        function endBreak() {
+            // Set flag so loadNextTrial knows to skip the break check this time
+            state.returningFromBreak = true;
+            
+            // Clear timer if it's still running
+            if (state.breakIntervalId) clearInterval(state.breakIntervalId);
+            
+            // Resume experiment
+            loadNextTrial();
+        }
         function updateProgress() {
             // 1. Check if we are in "Timer Mode"
             const config = state.experimentConfig;
@@ -1244,6 +1292,49 @@ const state = {
                 code += chars[Math.floor(Math.random() * chars.length)];
             }
             return code;
+        }
+
+        function startBreak() {
+            showScreen('break');
+            
+            // Get the limit from metadata (or default to 0)
+            const limit = state.experimentConfig.experiment_metadata?.break_time_limit || 0;
+            const display = document.getElementById('breakTimerDisplay');
+            const btn = document.getElementById('btn-resume-break');
+            
+            if (limit > 0) {
+                // TIMER MODE
+                btn.style.display = 'none'; // Hide button
+                let remaining = limit;
+                display.textContent = `Resume in ${remaining}s`;
+                
+                // Clear any old break timer just in case
+                if (window.breakInterval) clearInterval(window.breakInterval);
+                
+                window.breakInterval = setInterval(() => {
+                    remaining--;
+                    if (remaining > 0) {
+                        display.textContent = `Resume in ${remaining}s`;
+                    } else {
+                        // Timer Finished
+                        clearInterval(window.breakInterval);
+                        display.textContent = "";
+                        btn.style.display = 'inline-block'; // Show button
+                    }
+                }, 1000);
+            } else {
+                // NO TIMER (Manual only)
+                if(display) display.textContent = "";
+                btn.style.display = 'inline-block';
+            }
+        }
+
+        function resumeFromBreak() {
+            // Set flag so we don't get stuck in the break loop
+            state.returningFromBreak = true;
+            
+            // Load the next trial (this time it will skip the break check)
+            loadNextTrial();
         }
 
         // ===== INITIALIZATION =====
@@ -1517,14 +1608,12 @@ const state = {
                 updateProgress();
             }
 
-            // If server says session complete
+        // If server says session complete
             if (result && result.complete) {
                 showCompletion();
             } else if (state.trialsCompleted >= state.totalTrials) {
                 // local safety check
                 showCompletion();
-            } else if (shouldShowBreak()) {
-                showBreak();
             } else {
                 loadNextTrial();
             }
