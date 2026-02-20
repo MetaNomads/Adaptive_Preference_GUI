@@ -1,6 +1,7 @@
 const { app, BrowserWindow } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 
 // 1. FIX: Disable Hardware Acceleration to prevent "Network Service" crashes
@@ -25,9 +26,18 @@ function checkServerReady(callback) {
 }
 
 function createWindow() {
-  // 2. FIX: Changed '.venv' to 'venv' (Removed the dot) to match your installer script
-  // This is why it wasn't finding Python on the new computer
-  const pythonPath = path.join(__dirname, 'venv', 'Scripts', 'python.exe');
+  // Cross-platform Python path (Windows uses venv\Scripts\python.exe; macOS/Linux uses venv/bin/python3)
+  const isWin = process.platform === 'win32';
+
+  let pythonPath = isWin
+    ? path.join(__dirname, 'venv', 'Scripts', 'python.exe')
+    : path.join(__dirname, 'venv', 'bin', 'python3');
+
+  // Fallback for some systems where python3 is just "python"
+  if (!isWin && !fs.existsSync(pythonPath)) {
+    pythonPath = path.join(__dirname, 'venv', 'bin', 'python');
+  }
+
   const scriptPath = path.join(__dirname, 'backend', 'api.py');
   
   // 3. Launch the backend

@@ -25,23 +25,23 @@ echo "✓ Python version: $($PYTHON_BIN --version)"
 ##############################################
 # 2. Create venv
 ##############################################
-echo "→ Creating virtual environment (.venv)..."
+echo "→ Creating virtual environment (venv)..."
 
-rm -rf .venv 2>/dev/null || true
-$PYTHON_BIN -m venv .venv
+rm -rf venv 2>/dev/null || true
+$PYTHON_BIN -m venv venv
 
-if [ ! -d ".venv" ]; then
-    echo "❌ ERROR: Failed to create .venv"
+if [ ! -d "venv" ]; then
+    echo "❌ ERROR: Failed to create venv"
     exit 1
 fi
 
-echo "✓ .venv created"
+echo "✓ venv created"
 
 ##############################################
 # 3. Activate venv
 ##############################################
 echo "→ Activating virtual environment..."
-source .venv/bin/activate
+source venv/bin/activate
 
 echo "✓ Activated venv: $VIRTUAL_ENV"
 
@@ -91,5 +91,5 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo " Installation Completed Successfully!"
 echo ""
 echo "To activate the environment later:"
-echo "    source .venv/bin/activate"
+echo "    source venv/bin/activate"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
