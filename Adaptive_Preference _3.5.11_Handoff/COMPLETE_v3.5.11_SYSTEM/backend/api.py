@@ -200,6 +200,29 @@ def _exp_paths(experiment: 'Experiment') -> dict:
 
     return meta["exp_storage"]
 
+def _find_exp_dir_by_marker(experiment_id: str) -> str | None:
+    """
+    Find an experiment folder by scanning for a .experiment_id marker matching experiment_id.
+    IMPORTANT: This must NOT create any folders.
+    """
+    try:
+        data_root = get_data_root(DATA_BASE_DIR)
+        target = str(experiment_id)
+
+        for root, dirs, files in os.walk(data_root):
+            if ".experiment_id" not in files:
+                continue
+            marker = os.path.join(root, ".experiment_id")
+            try:
+                existing_id = open(marker, "r", encoding="utf-8").read().strip()
+                if existing_id == target:
+                    return root
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return None
 
 
 def _get_settings_db_path(experiment: 'Experiment', create_if_missing: bool = True):
@@ -2014,29 +2037,43 @@ def get_all_experiments():
         for exp in experiments:
             exp_data = exp.to_dict()
             
-            # --- FIX: Count sessions by counting .db files in participants folder ---
+            # --- Count sessions by counting .db files in participants folder ---
+            # ALSO: If the experiment folder is missing (because you deleted it on disk),
+            #       delete the experiment record from the core DB so it disappears from the dashboard.
             count = 0
             try:
-                # 1. Resolve Storage Paths
-                storage = exp.experiment_metadata.get("exp_storage")
-                if not storage:
-                    storage = _exp_paths(exp) # Ensure path exists
-                
+                meta = exp.experiment_metadata or {}
+                storage = meta.get("exp_storage") or {}
+
+                exp_dir = storage.get("exp_dir")
                 participants_dir = storage.get("participants_dir")
-                
-                # 2. Count .db files in the participants directory
+
+                # If we have exp_storage and the experiment folder is gone -> delete record and skip
+                if exp_dir:
+                    if not os.path.exists(exp_dir):
+                        db.session.delete(exp)
+                        continue
+                else:
+                    # Legacy experiments (no exp_storage): locate by marker WITHOUT creating anything
+                    found_dir = _find_exp_dir_by_marker(str(exp.experiment_id))
+                    if not found_dir or not os.path.exists(found_dir):
+                        db.session.delete(exp)
+                        continue
+                    participants_dir = os.path.join(found_dir, "participants")
+
+                # Count .db files in participants_dir if it exists
                 if participants_dir and os.path.exists(participants_dir):
-                    # List all files ending in .db (excluding temporary/journal files like .db-wal)
-                    files = [f for f in os.listdir(participants_dir) if f.endswith('.db')]
+                    files = [f for f in os.listdir(participants_dir) if f.endswith(".db")]
                     count = len(files)
 
             except Exception as e:
-                # Log error but allow dashboard to load with 0 count
                 logger.warning(f"Could not count session files for experiment {exp.name}: {e}")
+
             
             exp_data['session_count'] = count
             results.append(exp_data)
 
+        db.session.commit()
         return jsonify({'success': True, 'experiments': results})
     except Exception as e:
         logger.error(f"Error getting all experiments: {e}")
