@@ -187,6 +187,7 @@ def init_participant_results_db(results_db_path: str) -> None:
                 choice_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_token TEXT NOT NULL,
                 trial_number INTEGER NOT NULL,
+                reference_stimulus_id TEXT,
                 stimulus_a_id TEXT NOT NULL,
                 stimulus_b_id TEXT NOT NULL,
                 chosen_stimulus_id TEXT NOT NULL,
@@ -197,6 +198,12 @@ def init_participant_results_db(results_db_path: str) -> None:
             );
             """
         )
+
+        # ---- MIGRATION: add reference_stimulus_id column if missing from older DBs ----
+        cols = [r["name"] for r in con.execute("PRAGMA table_info(choices)").fetchall()]
+        if "reference_stimulus_id" not in cols:
+            con.execute("ALTER TABLE choices ADD COLUMN reference_stimulus_id TEXT;")
+
         con.commit()
     finally:
         con.close()

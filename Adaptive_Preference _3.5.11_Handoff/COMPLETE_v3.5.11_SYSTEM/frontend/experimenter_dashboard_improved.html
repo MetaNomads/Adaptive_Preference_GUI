@@ -1387,7 +1387,19 @@
                         <input type="text" id="expName" placeholder="e.g., Face Preference Study Fall 2025" oninput="validateForm()">
                         <div class="input-help">A descriptive name for your records</div>
                     </div>
-                    
+
+                    <div class="form-group" id="embeddingDimGroup" style="display: none;">
+                        <label>
+                            Embedding Dimension
+                            <span class="help-icon" onclick="showTooltip(event, 'embeddingDim')">ⓘ</span>
+                        </label>
+                        <select id="embeddingDim">
+                            <option value="2">2D (Standard visual mapping)</option>
+                            <option value="3">3D (Complex relationships)</option>
+                        </select>
+                        <div class="input-help">Dimensions used for Salmon triadic embedding.</div>
+                    </div>
+
                     <div class="form-group">
                         <label>
                             Number of Trials
@@ -1886,9 +1898,28 @@
             }
         }
 
-        // ===== TEMPLATE SELECTION =====
+// ===== TEMPLATE SELECTION =====
+        function startNewExperiment(type) {
+            state.experimentData.experimentType = type;
+            
+            if (type === 'triadic') {
+                document.getElementById('expName').value = "Triadic Similarity Study";
+                document.getElementById('trialsSlider').value = 60; // Salmon needs more trials
+                document.getElementById('embeddingDimGroup').style.display = 'block';
+            } else {
+                document.getElementById('embeddingDimGroup').style.display = 'none';
+            }
+            
+            updateTrialsValue();
+            nextStep();
+        }
+
         function loadTemplate(templateName) {
             state.experimentData.template = templateName;
+            state.experimentData.experimentType = 'pairwise';
+            const dimGroup = document.getElementById('embeddingDimGroup');
+            if (dimGroup) dimGroup.style.display = 'none';
+            
             
             // Set defaults based on template
             const templates = {
@@ -2365,14 +2396,13 @@
                 epsilon: 0.01,
                 exploration_weight: 0.1,
                 status: 'draft',
-                experiment_metadata: {                    // NEW
+                experiment_metadata: {
                     experiment_type: state.experimentData.experimentType || 'pairwise',
-                    embedding_dimension: 2, // New default
+                    embedding_dimension: parseInt(document.getElementById('embeddingDim')?.value) || 2,
                     goal_category: state.experimentData.goalCategory,
                     goal_description: state.experimentData.goalDescription,
                     recommended_profile: state.experimentData.recommendation
                 }
-
             };
             
         try {

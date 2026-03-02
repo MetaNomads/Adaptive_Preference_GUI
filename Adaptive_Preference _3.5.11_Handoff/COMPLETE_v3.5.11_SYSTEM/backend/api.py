@@ -2272,6 +2272,7 @@ def export_choices_csv(experiment_id):
 
         writer.writerow([
             'session_token', 'subject_id', 'trial_number',
+            'reference_stimulus_id',
             'stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id',
             'response_time_ms', 'timestamp', 'presentation_order'
         ])
@@ -2286,7 +2287,7 @@ def export_choices_csv(experiment_id):
                 subj = r.get("subject_id")
                 rows = c2.execute(
                     """
-                    SELECT trial_number, stimulus_a_id, stimulus_b_id, chosen_stimulus_id,
+                    SELECT trial_number, reference_stimulus_id, stimulus_a_id, stimulus_b_id, chosen_stimulus_id,
                            response_time_ms, timestamp, presentation_order
                       FROM choices
                      WHERE session_token = ?
@@ -2299,6 +2300,7 @@ def export_choices_csv(experiment_id):
                     writer.writerow([
                         r["session_token"], subj,
                         row["trial_number"],
+                        row["reference_stimulus_id"],
                         row["stimulus_a_id"], row["stimulus_b_id"], row["chosen_stimulus_id"],
                         row["response_time_ms"], row["timestamp"], row["presentation_order"]
                     ])
@@ -2363,6 +2365,7 @@ def export_clean_choices_csv(experiment_id):
         writer = csv.writer(output)
         writer.writerow([
             'session', 'subject_id', 'trial_number',
+            'reference_stimulus',
             'stimulus_a', 'stimulus_b', 'chosen_stimulus',
             'response_time_ms', 'timestamp', 'presentation_order'
         ])
@@ -2377,7 +2380,7 @@ def export_clean_choices_csv(experiment_id):
                 subj = r.get("subject_id")
                 rows = c2.execute(
                     """
-                    SELECT trial_number, stimulus_a_id, stimulus_b_id, chosen_stimulus_id,
+                    SELECT trial_number, reference_stimulus_id, stimulus_a_id, stimulus_b_id, chosen_stimulus_id,
                            response_time_ms, timestamp, presentation_order
                       FROM choices
                      WHERE session_token = ?
@@ -2391,13 +2394,14 @@ def export_clean_choices_csv(experiment_id):
                         session_label.get(r["session_token"], r["session_token"]),
                         subj,
                         row["trial_number"],
+                        stim_map.get(row["reference_stimulus_id"], row["reference_stimulus_id"] or "N/A"),
                         stim_map.get(row["stimulus_a_id"], row["stimulus_a_id"]),
                         stim_map.get(row["stimulus_b_id"], row["stimulus_b_id"]),
                         stim_map.get(row["chosen_stimulus_id"], row["chosen_stimulus_id"]),
                         row["response_time_ms"],
                         row["timestamp"],
                         row["presentation_order"]
-                    ])
+                    ])            
             finally:
                 c2.close()
 
@@ -2541,6 +2545,7 @@ def export_participant_choices_csv(experiment_id, subject_id):
         writer = csv.writer(output)
         writer.writerow([
             'session_token', 'subject_id', 'trial_number',
+            'reference_stimulus_id',
             'stimulus_a_id', 'stimulus_b_id', 'chosen_stimulus_id',
             'response_time_ms', 'timestamp', 'presentation_order'
         ])
@@ -2553,7 +2558,7 @@ def export_participant_choices_csv(experiment_id, subject_id):
             c2 = _connect_sqlite(db_path)
             try:
                 rows = c2.execute(
-                    'SELECT trial_number, stimulus_a_id, stimulus_b_id, chosen_stimulus_id, '
+                    'SELECT trial_number, reference_stimulus_id, stimulus_a_id, stimulus_b_id, chosen_stimulus_id, '
                     'response_time_ms, timestamp, presentation_order '
                     'FROM choices WHERE session_token = ? ORDER BY trial_number ASC',
                     (r["session_token"],)
@@ -2563,9 +2568,10 @@ def export_participant_choices_csv(experiment_id, subject_id):
                     writer.writerow([
                         r["session_token"], subject_id,
                         row["trial_number"],
+                        row["reference_stimulus_id"],
                         row["stimulus_a_id"], row["stimulus_b_id"], row["chosen_stimulus_id"],
                         row["response_time_ms"], row["timestamp"], row["presentation_order"]
-                    ])
+                    ])            
             finally:
                 c2.close()
 
@@ -2624,6 +2630,7 @@ def export_participant_clean_choices_csv(experiment_id, subject_id):
         writer = csv.writer(output)
         writer.writerow([
             'session', 'subject_id', 'trial_number',
+            'reference_stimulus',
             'stimulus_a', 'stimulus_b', 'chosen_stimulus',
             'response_time_ms', 'timestamp', 'presentation_order'
         ])
@@ -2637,7 +2644,7 @@ def export_participant_clean_choices_csv(experiment_id, subject_id):
             c2 = _connect_sqlite(db_path)
             try:
                 rows = c2.execute(
-                    'SELECT trial_number, stimulus_a_id, stimulus_b_id, chosen_stimulus_id, '
+                    'SELECT trial_number, reference_stimulus_id, stimulus_a_id, stimulus_b_id, chosen_stimulus_id, '
                     'response_time_ms, timestamp, presentation_order '
                     'FROM choices WHERE session_token = ? ORDER BY trial_number ASC',
                     (r["session_token"],)
@@ -2648,6 +2655,7 @@ def export_participant_clean_choices_csv(experiment_id, subject_id):
                         session_label,
                         subject_id,
                         row["trial_number"],
+                        stim_map.get(row["reference_stimulus_id"], row["reference_stimulus_id"] or "N/A"),
                         stim_map.get(row["stimulus_a_id"], row["stimulus_a_id"]),
                         stim_map.get(row["stimulus_b_id"], row["stimulus_b_id"]),
                         stim_map.get(row["chosen_stimulus_id"], row["chosen_stimulus_id"]),

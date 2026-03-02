@@ -1,4 +1,7 @@
 # Core Application
+PyYAML>=5.4.1,<6.0.0
+setuptools>=70.1.0
+wheel
 flask
 flask-cors
 flask-sqlalchemy
@@ -6,13 +9,15 @@ flask-limiter
 psycopg2-binary
 sqlalchemy
 werkzeug
-numpy
+numpy==1.26.4
 scipy
 pandas
 alembic
 psycopg2
 gunicorn
 salmon-triplets==0.10.0rc5
+Jinja2==3.0.3
+pydantic==1.10.15
 # Linting/Testing
 flake8
 bandit

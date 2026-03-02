@@ -609,8 +609,13 @@
         <div id="screen-trial" class="hidden">
             <div class="trial-screen">
                 <div class="trial-info">
-                    <h2>Which do you prefer?</h2>
-                    <p>Click on the image you like better</p>
+                    <h2 id="trialHeading">Which do you prefer?</h2>
+                    <p id="trialSubtext">Click on the image you like better</p>
+                </div>
+
+                <div id="referenceContainer" style="display: none; text-align: center; margin-bottom: 20px; background: #ebf4ff; padding: 20px; border-radius: 12px; border: 2px dashed #4299e1;">
+                    <h3 style="color: #2b6cb0; margin-bottom: 10px; font-size: 1.1em; text-transform: uppercase; letter-spacing: 1px;">Reference Image</h3>
+                    <img id="imageRef" src="" alt="Reference" style="max-height: 220px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); object-fit: contain;">
                 </div>
 
                 <div class="comparison-container">
@@ -1002,20 +1007,31 @@ const state = {
 
                     // 🔑 Store everything the backend sends, including pair_token
                     state.currentPair = {
+                        referenceStimulus: data.reference_stimulus,
                         stimulusA: data.stimulus_a,
                         stimulusB: data.stimulus_b,
-                        pairToken: data.pair_token,                        // <-- important
-                        presentationOrder: data.presentation_order || 'AB' // <-- keep track of order
+                        pairToken: data.pair_token,
+                        presentationOrder: data.presentation_order || 'AB'
                     };
                     state.selectedChoice = null;
                     state.trialStartTime = Date.now();
 
                     // Update UI
+                    if (data.reference_stimulus) {
+                        document.getElementById('referenceContainer').style.display = 'block';
+                        document.getElementById('imageRef').src = data.reference_stimulus.url;
+                        document.getElementById('trialHeading').textContent = "Which is more similar?";
+                        document.getElementById('trialSubtext').textContent = "Select the image that is most similar to the reference above.";
+                    } else {
+                        document.getElementById('referenceContainer').style.display = 'none';
+                        document.getElementById('trialHeading').textContent = "Which do you prefer?";
+                        document.getElementById('trialSubtext').textContent = "Click on the image you like better.";
+                    }
+
                     document.getElementById('imageA').src = state.currentPair.stimulusA.url;
                     document.getElementById('imageB').src = state.currentPair.stimulusB.url;
                     document.getElementById('imageA').alt = state.currentPair.stimulusA.stimulus_name;
                     document.getElementById('imageB').alt = state.currentPair.stimulusB.stimulus_name;
-
                     // Reset selection
                     document.getElementById('stimulusA').classList.remove('selected');
                     document.getElementById('stimulusB').classList.remove('selected');
@@ -1583,8 +1599,11 @@ const state = {
                 pair_token: state.currentPair.pairToken // 🔑 this is what the backend requires
             };
 
-            const identifier = `choice_${state.trialsCompleted + 1}_${Date.now()}`;
+            if (state.currentPair.referenceStimulus) {
+                choiceData.reference_stimulus_id = state.currentPair.referenceStimulus.stimulus_id;
+            }
 
+            const identifier = `choice_${state.trialsCompleted + 1}_${Date.now()}`;
             const result = await fetchWithRetry(
                 `${API_BASE}/sessions/${state.sessionToken}/choice`,
                 {
