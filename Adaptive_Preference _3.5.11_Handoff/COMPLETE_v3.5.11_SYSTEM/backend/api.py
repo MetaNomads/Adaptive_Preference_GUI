@@ -1808,18 +1808,18 @@ def get_next_pair(session_token):
         exp_meta = experiment.experiment_metadata or {}
         exp_type = exp_meta.get('experiment_type', 'pairwise')
 
+
         # ==========================================================
-        # TRIADIC LOGIC (SALMON)
-        # ==========================================================
-# ==========================================================
         # TRIADIC LOGIC (SALMON)
         # ==========================================================
         if exp_type == 'triadic':
             # EXACT IMPORT PATH
             from salmon.triplets.samplers import CKL
             
-            # 1. Build Salmon Triplet History
+            # 1. Build Salmon Triplet History & Track Asked Questions
             M_dicts = []
+            asked_triplets = set()
+            
             for c in choices:
                 head_id = str(c['reference_stimulus_id']) if c['reference_stimulus_id'] else None
                 winner_id = str(c['chosen_stimulus_id'])
@@ -1828,37 +1828,54 @@ def get_next_pair(session_token):
                 if head_id and head_id in id_to_idx and winner_id in id_to_idx and loser_id in id_to_idx:
                     w_idx = id_to_idx[winner_id]
                     l_idx = id_to_idx[loser_id]
+                    h_idx = id_to_idx[head_id]
+                    
                     M_dicts.append({
-                        "head": id_to_idx[head_id],
+                        "head": h_idx,
                         "winner": w_idx,
                         "left": w_idx,
                         "right": l_idx
                     })
+                    
+                    # Track asked triplets to avoid repeating the exact same trial
+                    asked_triplets.add((h_idx, w_idx, l_idx))
+                    asked_triplets.add((h_idx, l_idx, w_idx))
             
             # 2. Call Salmon's Active Query Selection
             # Wrap dimension in int() to ensure JSON strings don't crash the math
+            # Use session_token as ident so each participant gets a unique random sequence
             d = int(exp_meta.get('embedding_dimension', 2))
-            sampler = CKL(n=n_items, d=d, ident=str(experiment.experiment_id))
+            sampler = CKL(n=n_items, d=d, ident=session_token)
             
             if len(M_dicts) > 0:
                 sampler.process_answers(M_dicts)
                 
             # 3. Get next query
-            # Safely capture the return tuple (Salmon >1.0 returns 3 items: queries, scores, meta)
-            query_results = sampler.get_queries(num=1)
+            # Ask for the top 20 queries so we can filter out ones we've already asked
+            query_results = sampler.get_queries(num=20)
             queries = query_results[0]
             
+            h, i, j = None, None, None
             if len(queries) > 0:
-                h, i, j = queries[0]  # [head, choice1, choice2]
-            else:
-                h, i, j = np.random.choice(n_items, 3, replace=False)
-                
+                for q in queries:
+                    # q is [head, choice1, choice2]
+                    if (q[0], q[1], q[2]) not in asked_triplets:
+                        h, i, j = q
+                        break
+            
+            # 4. Fallback if the algorithm gets stuck or history is full
+            if h is None:
+                for _ in range(100):
+                    h, i, j = np.random.choice(n_items, 3, replace=False)
+                    if (h, i, j) not in asked_triplets:
+                        break
+                        
             pres_order = 'AB'
             if experiment.enable_counterbalancing and np.random.rand() > 0.5:
                 i, j = j, i
                 pres_order = 'BA'
 
-            # 4. Format the triplet response
+            # 5. Format the triplet response
             pair_token = jwt_issue_pair_token({
                 'session_id': session_token,
                 'session_token': session_token,
@@ -1898,7 +1915,6 @@ def get_next_pair(session_token):
                 'show_progress': bool(experiment.show_progress),
                 'progress_percentage': (trials_completed / trials_total * 100) if trials_total > 0 else 0
             })
-
         # ==========================================================
         # PAIRWISE LOGIC (GPRO - EXACTLY AS YOU PROVIDED)
         # ==========================================================
