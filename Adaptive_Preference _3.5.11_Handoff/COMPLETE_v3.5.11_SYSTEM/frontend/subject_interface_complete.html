@@ -1278,9 +1278,64 @@ const state = {
                 
                 if (remaining <= 0) {
                     clearInterval(state.timerInterval);
-                    // Timer finished - No action per your instructions
+                    // NEW: Trigger the soft skip
+                    handleTimeout(); 
                 }
             }, 33); // Update ~30 times per second
+        }
+
+        async function handleTimeout() {
+            // 1. Lock the screen so they can't click late
+            document.getElementById('confirmBtn').disabled = true;
+            if (!state.currentPair || !state.currentPair.pairToken) return;
+
+            // 2. Alert the user
+            showToast('Time Expired', 'Moving to next trial...', 'warning');
+
+            // 3. Package the "TIMEOUT" choice
+            const duration = state.experimentConfig.experiment_metadata.time_limit * 1000;
+            const choiceData = {
+                stimulus_a_id: state.currentPair.stimulusA.stimulus_id,
+                stimulus_b_id: state.currentPair.stimulusB.stimulus_id,
+                chosen_stimulus_id: 'TIMEOUT', // The magic flag
+                response_time_ms: duration,
+                presentation_order: state.currentPair.presentationOrder || 'AB',
+                pair_token: state.currentPair.pairToken
+            };
+
+            if (state.currentPair.referenceStimulus) {
+                choiceData.reference_stimulus_id = state.currentPair.referenceStimulus.stimulus_id;
+            }
+
+            // 4. Send to backend silently
+            const identifier = `choice_${state.trialsCompleted + 1}_${Date.now()}`;
+            const result = await fetchWithRetry(
+                `${API_BASE}/sessions/${state.sessionToken}/choice`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(choiceData)
+                },
+                identifier
+            );
+
+            // 5. Advance the UI
+            state.trialsCompleted++;
+            state.choices.push({
+                trial: state.trialsCompleted,
+                chosen: 'TIMEOUT',
+                responseTime: duration
+            });
+
+            if (result && !result.error && !result.queued) updateProgress();
+
+            if (result && result.complete) {
+                showCompletion();
+            } else if (state.trialsCompleted >= state.totalTrials) {
+                showCompletion();
+            } else {
+                loadNextTrial();
+            }
         }
 
         function showScreen(screenName) {

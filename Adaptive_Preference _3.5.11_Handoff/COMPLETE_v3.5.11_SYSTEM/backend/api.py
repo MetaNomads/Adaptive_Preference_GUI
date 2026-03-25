@@ -1194,24 +1194,32 @@ def _evaluate_session_quality(session, experiment):
         att_correct = 0
         
         for c in choices:
+            # 1. Flag if this specific trial was skipped due to timeout
+            is_timeout = (str(c.chosen_stimulus_id) == 'TIMEOUT')
+
             a = Stimulus.query.filter_by(stimulus_id=c.stimulus_a_id).first()
             b = Stimulus.query.filter_by(stimulus_id=c.stimulus_b_id).first()
             a_mark = _is_attention_stimulus(a)
             b_mark = _is_attention_stimulus(b)
             
+            # 2. If it was an attention check, grade it
             if a_mark or b_mark:
                 att_total += 1
-                correct_id = a.stimulus_id if a_mark else b.stimulus_id
-                if str(c.chosen_stimulus_id) == str(correct_id):
-                    att_correct += 1
+                
+                # A timeout on an attention check is an automatic failure.
+                # Only grade if they actually clicked an image.
+                if not is_timeout:
+                    correct_id = a.stimulus_id if a_mark else b.stimulus_id
+                    if str(c.chosen_stimulus_id) == str(correct_id):
+                        att_correct += 1
         
-        att_rate = (att_correct/att_total) if att_total else 1.0
+        att_rate = (att_correct / att_total) if att_total > 0 else 1.0
         session.attention_check_passed = (att_rate >= attention_min_rate)
         
         reasons = []
         if session.trials_completed < min_trials:
             reasons.append(f'low_trials:{session.trials_completed}<{min_trials}')
-        if att_total and not session.attention_check_passed:
+        if att_total > 0 and not session.attention_check_passed:
             reasons.append(f'low_attention:{att_rate:.2f}<{attention_min_rate:.2f}')
         
         if reasons:
@@ -1223,7 +1231,6 @@ def _evaluate_session_quality(session, experiment):
         db.session.commit()
     except Exception as e:
         logger.error(f"Quality evaluation error: {e}")
-
 
 # ============================================================================
 # API ENDPOINTS
@@ -1820,18 +1827,31 @@ def get_next_pair(session_token):
             M_dicts = []
             asked_triplets = set()
             
+# 1. Build Salmon Triplet History & Track Asked Questions
+            M_dicts = []
+            asked_triplets = set()
+            
             for c in choices:
                 head_id = str(c['reference_stimulus_id']) if c['reference_stimulus_id'] else None
                 winner_id = str(c['chosen_stimulus_id'])
-                loser_id = str(c['stimulus_a_id']) if winner_id == str(c['stimulus_b_id']) else str(c['stimulus_b_id'])
+                a_id = str(c['stimulus_a_id'])
+                b_id = str(c['stimulus_b_id'])
+                loser_id = a_id if winner_id == b_id else b_id
                 
+                # ALWAYS track that these images were shown to prevent repeats (Even TIMEOUTs)
+                if head_id and head_id in id_to_idx and a_id in id_to_idx and b_id in id_to_idx:
+                    h_idx = id_to_idx[head_id]
+                    a_idx = id_to_idx[a_id]
+                    b_idx = id_to_idx[b_id]
+                    asked_triplets.add((h_idx, a_idx, b_idx))
+                    asked_triplets.add((h_idx, b_idx, a_idx))
+                
+                # ONLY feed the math if they made a valid choice (Ignore TIMEOUTs)
                 if head_id and head_id in id_to_idx and winner_id in id_to_idx and loser_id in id_to_idx:
                     w_idx = id_to_idx[winner_id]
                     l_idx = id_to_idx[loser_id]
-                    h_idx = id_to_idx[head_id]
-                    
                     M_dicts.append({
-                        "head": h_idx,
+                        "head": id_to_idx[head_id],
                         "winner": w_idx,
                         "left": w_idx,
                         "right": l_idx
@@ -1922,38 +1942,54 @@ def get_next_pair(session_token):
             # 1. Build feature matrix X
             X = build_stimuli_features(stimuli_list)
 
-            # 2. Build the M matrix
+            # 2. Build the M matrix and track asked pairs
             M = []
+            asked_pairs = set()
+            
             for c in choices:
                 winner_id = str(c['chosen_stimulus_id'])
-                loser_id = str(c['stimulus_a_id']) if winner_id == str(c['stimulus_b_id']) else str(c['stimulus_b_id'])
+                a_id = str(c['stimulus_a_id'])
+                b_id = str(c['stimulus_b_id'])
+                loser_id = a_id if winner_id == b_id else b_id
                 
+                # ALWAYS track that these images were shown to prevent repeats
+                if a_id in id_to_idx and b_id in id_to_idx:
+                    a_idx = id_to_idx[a_id]
+                    b_idx = id_to_idx[b_id]
+                    asked_pairs.add((a_idx, b_idx))
+                    asked_pairs.add((b_idx, a_idx))
+                
+                # ONLY feed the math if they made a valid choice (Ignore TIMEOUTs)
                 if winner_id in id_to_idx and loser_id in id_to_idx:
                     M.append([id_to_idx[winner_id], id_to_idx[loser_id]])
             
             M = np.array(M, dtype=np.int32)
 
             # 3. Select next pair
-            if len(M) == 0:
+            if len(M) == 0 and len(asked_pairs) == 0:
                 # First trial: pick a random pair
                 i, j = np.random.choice(n_items, 2, replace=False)
             else:
                 from GPro.preference import ProbitPreferenceGP
                 from scipy.stats import norm
                 
-                # Fit the GPro model
-                gpr = ProbitPreferenceGP()
-                gpr.fit(X, M)
-                
-                # Predict utility and covariance for all items in the library
-                y_mean, y_cov = gpr.predict(X, return_y_cov=True)
+                # Fit the GPro model ONLY if valid choices exist
+                y_mean, y_cov = np.zeros(n_items), np.eye(n_items)
+                if len(M) > 0:
+                    gpr = ProbitPreferenceGP()
+                    gpr.fit(X, M)
+                    y_mean, y_cov = gpr.predict(X, return_y_cov=True)
                 
                 max_gain = -np.inf
-                best_pair = (0, 1)
+                best_pair = None
                 
                 # Active Learning: Select the pair with the highest expected information gain
                 for i in range(n_items):
                     for j in range(i + 1, n_items):
+                        # SKIP pairs we have already shown!
+                        if (i, j) in asked_pairs:
+                            continue
+                            
                         mu_diff = y_mean[i] - y_mean[j]
                         
                         # Compute variance difference adding epsilon noise
@@ -1971,7 +2007,11 @@ def get_next_pair(session_token):
                             max_gain = gain
                             best_pair = (i, j)
                 
-                i, j = best_pair
+                # Fallback if all pairs are exhausted
+                if best_pair is None:
+                    i, j = np.random.choice(n_items, 2, replace=False)
+                else:
+                    i, j = best_pair
 
             pair = [stimuli_list[i], stimuli_list[j]]
 
