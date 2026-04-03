@@ -1055,11 +1055,11 @@ const state = {
                         document.getElementById('referenceContainer').style.display = 'block';
                         displayMedia(data.reference_stimulus, 'imageRef', 'videoRef');
                         document.getElementById('trialHeading').textContent = "Which is more similar?";
-                        document.getElementById('trialSubtext').textContent = "Select the media that is most similar to the reference above.";
+                        document.getElementById('trialSubtext').textContent = state.experimentConfig.instructions;
                     } else {
                         document.getElementById('referenceContainer').style.display = 'none';
                         document.getElementById('trialHeading').textContent = "Which do you prefer?";
-                        document.getElementById('trialSubtext').textContent = "Click on the option you like better.";
+                        document.getElementById('trialSubtext').textContent = state.experimentConfig.instructions;
                     }
 
                     // Dynamically render A and B as either Image or Video
