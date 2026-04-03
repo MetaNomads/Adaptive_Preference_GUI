@@ -67,6 +67,7 @@ except ImportError:
 # ============================================================================
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 # Allow both localhost and the 127.0.0.1 IP on port 5000
 CORS(app, resources={
@@ -124,7 +125,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 # File upload configuration
 _default_upload = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'stimuli')
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', _default_upload)
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 5MB max file size
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4'}
 
 # Security

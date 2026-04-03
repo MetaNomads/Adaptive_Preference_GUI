@@ -1338,12 +1338,12 @@
                         <div class="upload-icon">📤</div>
                         <h3>Drop files here or click to browse</h3>
                         <ul class="upload-specs">
-                            <li>✓ Accepts: JPG, PNG, GIF</li>
-                            <li>✓ Recommended: 400x400 to 800x800 pixels</li>
-                            <li>✓ Maximum: 5MB per image</li>
-                            <li>✓ Minimum: 3 images required</li>
+                            <li>✓ Accepts: JPG, PNG, GIF, MP4</li>
+                            <li>✓ Recommended: Keep videos short for best performance</li>
+                            <li>✓ Maximum: 50MB per file</li>
+                            <li>✓ Minimum: 3 files required</li>
                         </ul>
-                        <input type="file" id="fileInput" multiple accept="image/*" style="display: none;" onchange="handleFiles(this.files)">
+                        <input type="file" id="fileInput" multiple accept="image/*,video/mp4" style="display: none;" onchange="handleFiles(this.files)">
                     </div>
                     
                     <div id="previewContainer" class="preview-grid" style="margin-top: 20px;"></div>
@@ -2004,15 +2004,16 @@
             const errors = [];
             
             for (let file of files) {
-                // Validate file type
-                if (!file.type.startsWith('image/')) {
-                    errors.push(`${file.name}: Not an image file`);
+                // Validate file type (Allow images AND mp4 videos)
+                if (!file.type.startsWith('image/') && file.type !== 'video/mp4') {
+                    errors.push(`${file.name}: Not an image or MP4 file`);
                     continue;
                 }
                 
-                // Validate file size (5MB)
-                if (file.size > 5 * 1024 * 1024) {
-                    errors.push(`${file.name}: File too large (>5MB)`);
+            // Validate file size (Increased to 50MB for videos)
+                const maxSizeMB = 500;
+                if (file.size > maxSizeMB * 1024 * 1024) {
+                    errors.push(`${file.name}: File too large (>${maxSizeMB}MB)`);
                     continue;
                 }
                 
@@ -2036,16 +2037,22 @@
             state.experimentData.images.forEach((file, index) => {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const div = document.createElement('div');
+                const div = document.createElement('div');
                     div.className = 'preview-item';
+                    
+                    // Conditionally render a video or image tag
+                    const mediaTag = file.type.startsWith('video/') 
+                        ? `<video src="${e.target.result}" style="width: 100%; height: 150px; object-fit: cover; background: #000;" autoplay loop muted playsinline></video>`
+                        : `<img src="${e.target.result}" alt="${file.name}">`;
+
                     div.innerHTML = `
-                        <img src="${e.target.result}" alt="${file.name}">
+                        ${mediaTag}
                         <div class="preview-info">
-                            <div style="font-weight: 600; margin-bottom: 5px;">${file.name}</div>
+                            <div style="font-weight: 600; margin-bottom: 5px; word-break: break-all;">${file.name}</div>
                             <div style="color: var(--gray-700);">${(file.size / 1024).toFixed(1)} KB</div>
                         </div>
                         <button class="remove-btn" onclick="removeImage(${index})">×</button>
-                    `;
+                    `;      
                     container.appendChild(div);
                 };
                 reader.readAsDataURL(file);
