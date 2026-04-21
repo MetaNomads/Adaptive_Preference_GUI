@@ -685,7 +685,11 @@ const state = {
             sessionStartTime: null,
             timerInterval: null,
             returningFromBreak: false,
-            breakIntervalId: null
+            breakIntervalId: null,
+            // True only when the current trial's media has finished loading AND
+            // the subject is free to make a selection. Gates clicks during the
+            // /next fetch + media-loading window.
+            trialReady: false
         };
 
         // ===== API CONFIGURATION =====
@@ -1048,6 +1052,9 @@ const state = {
                         presentationOrder: data.presentation_order || 'AB'
                     };
                     state.selectedChoice = null;
+                    // Lock interaction until the new pair's media actually loads.
+                    // selectStimulus ignores clicks while this is false.
+                    state.trialReady = false;
                     state.trialStartTime = Date.now();
 
                     // Update UI
@@ -1062,9 +1069,13 @@ const state = {
                         document.getElementById('trialSubtext').textContent = state.experimentConfig.instructions;
                     }
 
-                    // Dynamically render A and B as either Image or Video
-                    displayMedia(state.currentPair.stimulusA, 'imageA', 'videoA');
-                    displayMedia(state.currentPair.stimulusB, 'imageB', 'videoB');
+                    // displayMedia returns a Promise that resolves on load/error
+                    // for both images and videos. Await both before opening up
+                    // interaction so subjects can't click half-loaded stimuli.
+                    const mediaReady = Promise.all([
+                        displayMedia(state.currentPair.stimulusA, 'imageA', 'videoA'),
+                        displayMedia(state.currentPair.stimulusB, 'imageB', 'videoB')
+                    ]);
                     // Reset selection
                     document.getElementById('stimulusA').classList.remove('selected');
                     document.getElementById('stimulusB').classList.remove('selected');
@@ -1073,10 +1084,18 @@ const state = {
                     // Update progress
                     updateProgress();
 
-                    startTrialTimer();
-
-                    // Show trial screen
+                    // Show trial screen *before* waiting, so subjects see the
+                    // (still-loading) pair immediately rather than a blank state.
                     showScreen('trial');
+
+                    // Wait for media to finish, THEN open up interaction and
+                    // start the response-time clock. This closes the race where
+                    // a subject clicks a half-loaded stimulus and submits
+                    // against a stale pair_token.
+                    await mediaReady;
+                    state.trialReady = true;
+                    state.trialStartTime = Date.now();  // RT clocked from fully-loaded
+                    startTrialTimer();
 
             } catch (error) {
                     console.error('Error loading trial:', error);
@@ -1086,6 +1105,13 @@ const state = {
         }
 
         function selectStimulus(choice) {
+            // Ignore clicks while a trial is transitioning (between pair submission
+            // and new media finishing load). Without this gate, the subject can
+            // click a still-visible old stimulus before the new pair has finished
+            // loading, which re-enables Confirm and submits with a stale state —
+            // producing "Retrying..." / "Choice Queued" toasts and counter drift.
+            if (!state.trialReady) return;
+
             state.selectedChoice = choice;
 
             // Update UI
@@ -1320,6 +1346,7 @@ const state = {
         async function handleTimeout() {
             // 1. Lock the screen so they can't click late
             document.getElementById('confirmBtn').disabled = true;
+            state.trialReady = false;
             if (!state.currentPair || !state.currentPair.pairToken) return;
 
             // 2. Alert the user
@@ -1340,7 +1367,7 @@ const state = {
                 choiceData.reference_stimulus_id = state.currentPair.referenceStimulus.stimulus_id;
             }
 
-            // 4. Send to backend silently
+            // 4. Send to backend
             const identifier = `choice_${state.trialsCompleted + 1}_${Date.now()}`;
             const result = await fetchWithRetry(
                 `${API_BASE}/sessions/${state.sessionToken}/choice`,
@@ -1352,19 +1379,29 @@ const state = {
                 identifier
             );
 
-            // 5. Advance the UI
+            // SERVER-CONFIRMED ADVANCEMENT ONLY.
+            // Previously this advanced state.trialsCompleted unconditionally,
+            // so a flaky network during a timeout would drift the client
+            // counter ahead of the server and eventually fire showCompletion()
+            // via the local safety check — even though the TIMEOUT row never
+            // made it into the DB.
+            const serverConfirmed = result && !result.error && !result.queued;
+
+            if (!serverConfirmed) {
+                showError('Connection issue recording timeout. Please refresh to resume the session.');
+                return;
+            }
+
+            // 5. Advance the UI (only after server confirmation)
             state.trialsCompleted++;
             state.choices.push({
                 trial: state.trialsCompleted,
                 chosen: 'TIMEOUT',
                 responseTime: duration
             });
+            updateProgress();
 
-            if (result && !result.error && !result.queued) updateProgress();
-
-            if (result && result.complete) {
-                showCompletion();
-            } else if (state.trialsCompleted >= state.totalTrials) {
+            if (result.complete) {
                 showCompletion();
             } else {
                 loadNextTrial();
@@ -1663,6 +1700,19 @@ const state = {
 
             if (!state.selectedChoice) return;
 
+            // HARD LOCK against double-click / re-entry.
+            // Without this, rapid clicks fire multiple confirmChoice() calls
+            // with the same pair_token. The server rejects the duplicates with
+            // 400 "pair_token/session mismatch", fetchWithRetry queues them,
+            // and the client counter drifts ahead of the server counter.
+            const btn = document.getElementById('confirmBtn');
+            if (btn && btn.disabled) return;
+            if (btn) btn.disabled = true;
+
+            // Also close the trialReady gate so any clicks during submission
+            // and the next-trial media-load window are ignored.
+            state.trialReady = false;
+
             // Demo mode: delegate to original simple handler
             if (window.demoMode) {
                 return originalConfirmChoice.call(this);
@@ -1670,6 +1720,7 @@ const state = {
 
             if (!state.currentPair || !state.currentPair.pairToken) {
                 showToast('Error', 'No active trial token. Please refresh the page.', 'error');
+                if (btn) btn.disabled = false;
                 return;
             }
 
@@ -1702,24 +1753,33 @@ const state = {
                 identifier
             );
 
-            // Update client-side counts regardless of whether it was queued
+            // SERVER-CONFIRMED ADVANCEMENT ONLY.
+            // Previously this advanced state.trialsCompleted even on queued/failed
+            // requests, which silently desynced the client counter from the DB
+            // and triggered showCompletion() via the now-removed "local safety"
+            // check — yielding the 36/40 and 39/40 database states.
+            const serverConfirmed = result && !result.error && !result.queued;
+
+            if (!serverConfirmed) {
+                // Request did not reach the server (queued, aborted, or errored).
+                // Do not advance. Re-open the gate and let the user retry.
+                if (btn) btn.disabled = false;
+                state.trialReady = true;
+                showError('Your response did not reach the server. Please click Confirm again.');
+                return;
+            }
+
+            // Confirmed by server — safe to advance client state.
             state.trialsCompleted++;
             state.choices.push({
                 trial: state.trialsCompleted,
                 chosen: state.selectedChoice,
                 responseTime: responseTime
             });
+            updateProgress();
 
-            // If it actually reached the server, update progress from server’s viewpoint
-            if (result && !result.error && !result.queued) {
-                updateProgress();
-            }
-
-        // If server says session complete
-            if (result && result.complete) {
-                showCompletion();
-            } else if (state.trialsCompleted >= state.totalTrials) {
-                // local safety check
+            // Trust server for completion. No local counter fallback.
+            if (result.complete) {
                 showCompletion();
             } else {
                 loadNextTrial();
